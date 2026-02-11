@@ -8,7 +8,7 @@ import com.ecolens.ecolens_backend.model.Product;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    Optional<Product> findFirstByNameIgnoreCase(String name);
+    Optional<Product> findByNameIgnoreCase(String name);
 
     Optional<Product> findFirstByCategoryIgnoreCase(String category);
 }

@@ -79,6 +79,10 @@ public class LLMService {
         }
     }
 
+    public boolean isFallbackExplanation(String explanation) {
+        return explanation == null || explanation.isBlank() || FALLBACK_MESSAGE.equals(explanation);
+    }
+
     private ApiKeyResolution resolveApiKey() {
         String fromEnvGoogleKey = environment.getProperty("GOOGLE_API_KEY");
         if (fromEnvGoogleKey != null && !fromEnvGoogleKey.isBlank()) {
