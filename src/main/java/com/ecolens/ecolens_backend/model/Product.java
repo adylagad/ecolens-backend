@@ -24,13 +24,13 @@ public class Product {
     @Column(name = "eco_score")
     private Integer ecoScore;
 
-    @Column(name = "carbon_impact")
+    @Column(name = "co2_gram")
     private Double carbonImpact;
 
     @Column(nullable = false)
     private String recyclability;
 
-    @Column(name = "alternative_recommendation")
+    @Column(name = "alt_recommendation")
     private String alternativeRecommendation;
 
     @Column(nullable = true, length = 2000)
