@@ -23,19 +23,25 @@ public class ProductService {
 
     public RecognitionResponse handleRecognition(String detectedLabel, double confidence) {
         String normalizedLabel = normalizeLabel(detectedLabel);
+        String generationStatus = "skipped_cached_explanation";
 
         Product product = productRepository.findByNameIgnoreCase(normalizedLabel)
                 .or(() -> productRepository.findFirstByCategoryIgnoreCase(normalizedLabel))
                 .orElseGet(() -> createDefaultProduct(normalizedLabel));
 
         if (product.getExplanation() == null || product.getExplanation().isBlank()) {
+            generationStatus = "attempted";
             try {
                 String generatedExplanation = llmService.generateExplanation(product);
                 if (!llmService.isFallbackExplanation(generatedExplanation)) {
                     product.setExplanation(generatedExplanation);
                     product = productRepository.save(product);
+                    generationStatus = "attempted_saved";
+                } else {
+                    generationStatus = "attempted_fallback";
                 }
             } catch (Exception ex) {
+                generationStatus = "attempted_failed";
                 log.warn("Explanation generation failed for product={}: {}", safe(product.getName()), ex.getMessage());
             }
         }
@@ -49,6 +55,10 @@ public class ProductService {
         response.setAltRecommendation(product.getAlternativeRecommendation());
         response.setExplanation(product.getExplanation() == null ? "" : product.getExplanation());
         response.setConfidence(confidence);
+
+        log.info("ProductService handled recognition: label='{}', product='{}', llm={}",
+                normalizedLabel, safe(product.getName()), generationStatus);
+
         return response;
     }
 
