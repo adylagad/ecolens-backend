@@ -1,103 +1,151 @@
 package com.ecolens.ecolens_backend.service;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import com.ecolens.ecolens_backend.model.Product;
-import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
-import com.openai.models.chat.completions.ChatCompletion;
-import com.openai.models.chat.completions.ChatCompletionCreateParams;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class LLMService {
 
     private static final String FALLBACK_MESSAGE = "Explanation not available (no API key / generation failed).";
+    private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
     private static final Logger log = LoggerFactory.getLogger(LLMService.class);
 
     private final Environment environment;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
 
     public LLMService(Environment environment) {
         this.environment = environment;
+        this.objectMapper = new ObjectMapper();
+        this.httpClient = HttpClient.newHttpClient();
     }
 
     public String generateExplanation(Product product) {
         ApiKeyResolution apiKeyResolution = resolveApiKey();
         if (apiKeyResolution.key() == null || apiKeyResolution.key().isBlank()) {
-            log.warn("OpenAI explanation skipped: no API key detected (checked openai.api.key / OPENAI_API_KEY).");
+            log.warn("Gemini explanation skipped: no API key detected (checked gemini.api.key / GEMINI_API_KEY).");
             return FALLBACK_MESSAGE;
         }
 
-        OpenAIClient client = null;
         try {
             String model = resolveModel();
-            log.info("OpenAI explanation generation enabled. Key source={}, model={}.",
+            log.info("Gemini explanation generation enabled. Key source={}, model={}.",
                     apiKeyResolution.source(), model);
 
-            client = OpenAIOkHttpClient.builder()
-                    .apiKey(apiKeyResolution.key())
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(buildGeminiUri(model, apiKeyResolution.key()))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(buildGeminiRequestBody(product)))
                     .build();
 
-            ChatCompletionCreateParams params = ChatCompletionCreateParams.builder()
-                    .model(model)
-                    .addSystemMessage("You are an eco assistant. Return exactly two sentences explanation and one short suggestion line.")
-                    .addUserMessage(buildPrompt(product))
-                    .temperature(0.2)
-                    .maxCompletionTokens(180)
-                    .build();
-
-            ChatCompletion completion = client.chat().completions().create(params);
-            if (completion.choices().isEmpty()) {
-                log.warn("OpenAI explanation generation returned no choices for product={}.", safe(product.getName()));
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.error("Gemini explanation generation failed for product={}: HTTP {} body={}",
+                        safe(product.getName()), response.statusCode(), response.body());
                 return FALLBACK_MESSAGE;
             }
 
-            String content = completion.choices().get(0).message().content().orElse("").trim();
+            String content = extractGeneratedText(response.body());
             if (content.isBlank()) {
-                log.warn("OpenAI explanation generation returned blank content for product={}.", safe(product.getName()));
+                log.warn("Gemini explanation generation returned blank content for product={}.", safe(product.getName()));
                 return FALLBACK_MESSAGE;
             }
 
-            log.info("OpenAI explanation generated successfully for product={}.", safe(product.getName()));
+            log.info("Gemini explanation generated successfully for product={}.", safe(product.getName()));
             return content;
         } catch (Exception ex) {
-            log.error("OpenAI explanation generation failed for product={}: {}: {}",
+            log.error("Gemini explanation generation failed for product={}: {}: {}",
                     safe(product.getName()), ex.getClass().getSimpleName(), ex.getMessage());
             return FALLBACK_MESSAGE;
-        } finally {
-            if (client != null) {
-                client.close();
-            }
         }
     }
 
     private ApiKeyResolution resolveApiKey() {
-        String fromProps = environment.getProperty("openai.api.key");
+        String fromProps = environment.getProperty("gemini.api.key");
         if (fromProps != null && !fromProps.isBlank()) {
-            return new ApiKeyResolution(fromProps, "application-property-openai.api.key");
+            return new ApiKeyResolution(fromProps, "application-property-gemini.api.key");
         }
 
-        String fromEnvProperty = environment.getProperty("OPENAI_API_KEY");
+        String fromEnvProperty = environment.getProperty("GEMINI_API_KEY");
         if (fromEnvProperty != null && !fromEnvProperty.isBlank()) {
-            return new ApiKeyResolution(fromEnvProperty, "spring-environment-OPENAI_API_KEY");
+            return new ApiKeyResolution(fromEnvProperty, "spring-environment-GEMINI_API_KEY");
         }
 
-        String fromSystemEnv = System.getenv("OPENAI_API_KEY");
+        String fromSystemEnv = System.getenv("GEMINI_API_KEY");
         if (fromSystemEnv != null && !fromSystemEnv.isBlank()) {
-            return new ApiKeyResolution(fromSystemEnv, "system-env-OPENAI_API_KEY");
+            return new ApiKeyResolution(fromSystemEnv, "system-env-GEMINI_API_KEY");
         }
 
         return new ApiKeyResolution(null, "none");
     }
 
     private String resolveModel() {
-        String configuredModel = environment.getProperty("openai.api.model");
+        String configuredModel = environment.getProperty("gemini.api.model");
         if (configuredModel != null && !configuredModel.isBlank()) {
             return configuredModel;
         }
-        return "gpt-4o-mini";
+        return "gemini-2.0-flash";
+    }
+
+    private URI buildGeminiUri(String model, String apiKey) {
+        String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8);
+        String encodedKey = URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
+        String endpoint = GEMINI_BASE_URL + encodedModel + ":generateContent?key=" + encodedKey;
+        return URI.create(endpoint);
+    }
+
+    private String buildGeminiRequestBody(Product product) throws IOException {
+        String prompt = "You are an eco assistant. Return exactly two short sentences explaining the product's eco impact "
+                + "followed by one single-line suggestion prefixed with 'Suggestion:'.\n\n"
+                + buildPrompt(product);
+
+        JsonNode payload = objectMapper.createObjectNode()
+                .set("contents", objectMapper.createArrayNode().add(
+                        objectMapper.createObjectNode().set("parts",
+                                objectMapper.createArrayNode().add(
+                                        objectMapper.createObjectNode().put("text", prompt)
+                                ))
+                ));
+        return objectMapper.writeValueAsString(payload);
+    }
+
+    private String extractGeneratedText(String responseBody) throws IOException {
+        JsonNode root = objectMapper.readTree(responseBody);
+        JsonNode candidates = root.path("candidates");
+        if (!candidates.isArray() || candidates.isEmpty()) {
+            return "";
+        }
+
+        JsonNode parts = candidates.get(0).path("content").path("parts");
+        if (!parts.isArray() || parts.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder text = new StringBuilder();
+        for (JsonNode part : parts) {
+            String partText = part.path("text").asText("");
+            if (!partText.isBlank()) {
+                if (text.length() > 0) {
+                    text.append("\n");
+                }
+                text.append(partText.trim());
+            }
+        }
+        return text.toString().trim();
     }
 
     private String buildPrompt(Product product) {
