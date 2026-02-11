@@ -35,9 +35,14 @@ public class LLMService {
     }
 
     public String generateExplanation(Product product) {
+        if (!isGeminiProviderEnabled()) {
+            log.warn("LLM explanation skipped: llm.provider is not set to 'gemini'.");
+            return FALLBACK_MESSAGE;
+        }
+
         ApiKeyResolution apiKeyResolution = resolveApiKey();
         if (apiKeyResolution.key() == null || apiKeyResolution.key().isBlank()) {
-            log.warn("Gemini explanation skipped: no API key detected (checked gemini.api.key / GEMINI_API_KEY).");
+            log.warn("Gemini explanation skipped: no API key detected (checked GOOGLE_API_KEY / GEMINI_API_KEY / gemini.api.key).");
             return FALLBACK_MESSAGE;
         }
 
@@ -75,6 +80,16 @@ public class LLMService {
     }
 
     private ApiKeyResolution resolveApiKey() {
+        String fromEnvGoogleKey = environment.getProperty("GOOGLE_API_KEY");
+        if (fromEnvGoogleKey != null && !fromEnvGoogleKey.isBlank()) {
+            return new ApiKeyResolution(fromEnvGoogleKey, "spring-environment-GOOGLE_API_KEY");
+        }
+
+        String fromSystemGoogleKey = System.getenv("GOOGLE_API_KEY");
+        if (fromSystemGoogleKey != null && !fromSystemGoogleKey.isBlank()) {
+            return new ApiKeyResolution(fromSystemGoogleKey, "system-env-GOOGLE_API_KEY");
+        }
+
         String fromProps = environment.getProperty("gemini.api.key");
         if (fromProps != null && !fromProps.isBlank()) {
             return new ApiKeyResolution(fromProps, "application-property-gemini.api.key");
@@ -94,11 +109,24 @@ public class LLMService {
     }
 
     private String resolveModel() {
+        String envModel = environment.getProperty("GEMINI_MODEL");
+        if (envModel != null && !envModel.isBlank()) {
+            return envModel;
+        }
+
         String configuredModel = environment.getProperty("gemini.api.model");
         if (configuredModel != null && !configuredModel.isBlank()) {
             return configuredModel;
         }
         return "gemini-2.0-flash";
+    }
+
+    private boolean isGeminiProviderEnabled() {
+        String provider = environment.getProperty("llm.provider");
+        if (provider == null || provider.isBlank()) {
+            return true;
+        }
+        return "gemini".equalsIgnoreCase(provider.trim());
     }
 
     private URI buildGeminiUri(String model, String apiKey) {
