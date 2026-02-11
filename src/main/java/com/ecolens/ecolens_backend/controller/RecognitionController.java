@@ -10,15 +10,18 @@ import com.ecolens.ecolens_backend.dto.RecognitionRequest;
 import com.ecolens.ecolens_backend.dto.RecognitionResponse;
 import com.ecolens.ecolens_backend.model.Product;
 import com.ecolens.ecolens_backend.repository.ProductRepository;
+import com.ecolens.ecolens_backend.service.LLMService;
 
 @RestController
 @RequestMapping("/api")
 public class RecognitionController {
 
     private final ProductRepository productRepository;
+    private final LLMService llmService;
 
-    public RecognitionController(ProductRepository productRepository) {
+    public RecognitionController(ProductRepository productRepository, LLMService llmService) {
         this.productRepository = productRepository;
+        this.llmService = llmService;
     }
 
     @PostMapping("/recognize")
@@ -29,8 +32,10 @@ public class RecognitionController {
                 .or(() -> productRepository.findFirstByCategoryIgnoreCase(detectedLabel))
                 .orElseGet(() -> createDefaultProduct(detectedLabel));
 
-        if (product.getExplanation() == null) {
-            product.setExplanation("");
+        if (product.getExplanation() == null || product.getExplanation().isBlank()) {
+            String generatedExplanation = llmService.generateExplanation(product);
+            product.setExplanation(generatedExplanation);
+            product = productRepository.save(product);
         }
 
         RecognitionResponse response = new RecognitionResponse();
