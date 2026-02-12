@@ -103,15 +103,17 @@ public class LLMService {
                 return "";
             }
 
+            String mimeType = detectMimeType(sanitizedImage);
+
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(buildGeminiUri(model, apiKeyResolution.key()))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(buildGeminiVisionRequestBody(sanitizedImage)))
+                    .POST(HttpRequest.BodyPublishers.ofString(buildGeminiVisionRequestBody(sanitizedImage, mimeType)))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("Gemini image detection failed: HTTP {}", response.statusCode());
+                log.warn("Gemini image detection failed: HTTP {} body={}", response.statusCode(), response.body());
                 return "";
             }
 
@@ -202,7 +204,7 @@ public class LLMService {
         return objectMapper.writeValueAsString(payload);
     }
 
-    private String buildGeminiVisionRequestBody(String imageBase64) throws IOException {
+    private String buildGeminiVisionRequestBody(String imageBase64, String mimeType) throws IOException {
         String prompt = "Identify the main product item in this image and return only a short lower-case "
                 + "category label such as plastic bottle, paper cup, or aluminum can. "
                 + "Return label only.";
@@ -214,7 +216,7 @@ public class LLMService {
                                         .add(objectMapper.createObjectNode().put("text", prompt))
                                         .add(objectMapper.createObjectNode().set("inline_data",
                                                 objectMapper.createObjectNode()
-                                                        .put("mime_type", "image/jpeg")
+                                                        .put("mime_type", mimeType)
                                                         .put("data", imageBase64)
                                         ))
                         )
@@ -276,6 +278,30 @@ public class LLMService {
         } catch (IllegalArgumentException ex) {
             return "";
         }
+    }
+
+    private String detectMimeType(String imageBase64) {
+        byte[] decoded = Base64.getDecoder().decode(imageBase64);
+        if (decoded.length >= 8
+                && (decoded[0] & 0xFF) == 0x89
+                && decoded[1] == 0x50
+                && decoded[2] == 0x4E
+                && decoded[3] == 0x47
+                && decoded[4] == 0x0D
+                && decoded[5] == 0x0A
+                && decoded[6] == 0x1A
+                && decoded[7] == 0x0A) {
+            return "image/png";
+        }
+
+        if (decoded.length >= 3
+                && (decoded[0] & 0xFF) == 0xFF
+                && (decoded[1] & 0xFF) == 0xD8
+                && (decoded[2] & 0xFF) == 0xFF) {
+            return "image/jpeg";
+        }
+
+        return "image/jpeg";
     }
 
     private record ApiKeyResolution(String key, String source) {
