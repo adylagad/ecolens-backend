@@ -70,6 +70,8 @@ public class ProductService {
         Product product = findBestProduct(normalizedLabel)
                 .orElseGet(() -> createDefaultProduct(normalizedLabel));
 
+        RatingDecision ratingDecision = rateProduct(product);
+
         if (product.getExplanation() == null || product.getExplanation().isBlank()) {
             generationStatus = "attempted";
             try {
@@ -90,15 +92,20 @@ public class ProductService {
         RecognitionResponse response = new RecognitionResponse();
         response.setName(product.getName());
         response.setCategory(product.getCategory());
-        response.setEcoScore(product.getEcoScore());
-        response.setCo2Gram(product.getCarbonImpact());
-        response.setRecyclability(product.getRecyclability());
-        response.setAltRecommendation(product.getAlternativeRecommendation());
-        response.setExplanation(product.getExplanation() == null ? "" : product.getExplanation());
+        response.setEcoScore(ratingDecision.ecoScore());
+        response.setCo2Gram(ratingDecision.co2Gram());
+        response.setRecyclability(ratingDecision.recyclability());
+        response.setAltRecommendation(ratingDecision.altRecommendation());
+        String explanation = product.getExplanation() == null ? "" : product.getExplanation();
+        if (llmService.isFallbackExplanation(explanation) || explanation.isBlank()) {
+            explanation = ratingDecision.summary();
+        }
+        response.setExplanation(explanation);
         response.setConfidence(confidence);
 
-        log.info("ProductService handled recognition: inputSource={}, label='{}', product='{}', llm={}",
-                inputSource, normalizedLabel, safe(product.getName()), generationStatus);
+        log.info("ProductService handled recognition: inputSource={}, label='{}', product='{}', llm={}, ratedEcoScore={}, greenerAlternative={}",
+                inputSource, normalizedLabel, safe(product.getName()), generationStatus,
+                ratingDecision.ecoScore(), ratingDecision.greenerAlternative());
 
         return response;
     }
@@ -114,6 +121,85 @@ public class ProductService {
                 "Consider a reusable alternative",
                 ""
         );
+    }
+
+    private RatingDecision rateProduct(Product product) {
+        int score = product.getEcoScore() == null ? 50 : product.getEcoScore();
+        double co2 = product.getCarbonImpact() == null ? 100.0 : product.getCarbonImpact();
+        String recyclability = safe(product.getRecyclability());
+        String category = normalizeLabel(product.getCategory());
+        String name = normalizeLabel(product.getName());
+        String combined = (category + " " + name).trim();
+
+        boolean singleUse = containsAny(combined, "single use", "single-use", "disposable", "plastic bottle", "plastic bag");
+        boolean reusable = containsAny(combined, "reusable", "refillable", "cloth bag", "steel bottle", "led");
+
+        if (singleUse) {
+            score -= 18;
+        }
+        if (reusable) {
+            score += 18;
+        }
+
+        if (containsAny(combined, "plastic")) {
+            score -= 10;
+        }
+        if (containsAny(combined, "paper")) {
+            score -= 2;
+        }
+        if (containsAny(combined, "aluminum", "glass")) {
+            score += 5;
+        }
+        if (containsAny(combined, "cloth", "recycled")) {
+            score += 10;
+        }
+
+        String recyclabilityNormalized = normalizeLabel(recyclability);
+        if (containsAny(recyclabilityNormalized, "high")) {
+            score += 10;
+        } else if (containsAny(recyclabilityNormalized, "medium")) {
+            score += 3;
+        } else if (containsAny(recyclabilityNormalized, "low", "unknown")) {
+            score -= 8;
+        } else if (containsAny(recyclabilityNormalized, "organic")) {
+            score += 6;
+        }
+
+        if (co2 <= 20) {
+            score += 10;
+        } else if (co2 <= 50) {
+            score += 7;
+        } else if (co2 <= 100) {
+            score += 2;
+        } else if (co2 > 200) {
+            score -= 10;
+        } else {
+            score -= 4;
+        }
+
+        boolean greenerAlternative = reusable || score >= 90;
+        if (greenerAlternative) {
+            score += 6;
+        }
+        score = clamp(score, 0, 100);
+
+        String recommendation;
+        String summary;
+        if (greenerAlternative) {
+            recommendation = "Great choice. This is already a greener alternative.";
+            summary = "This item is a greener alternative with a strong eco profile. Keep using reusable or refillable options.";
+        } else if (score < 40) {
+            recommendation = "Consider switching to reusable/refillable alternatives when possible.";
+            summary = "This item has a relatively high environmental impact due to material or single-use pattern.";
+        } else if (score < 70) {
+            recommendation = "Try a lower-impact alternative or improve recycling habits.";
+            summary = "This item has a moderate impact and can be improved with better reuse or recycling choices.";
+        } else {
+            recommendation = "Good choice overall. Look for refill/reuse opportunities to improve further.";
+            summary = "This item has a relatively good eco profile compared with common alternatives.";
+        }
+
+        return new RatingDecision(score, co2, recyclability, recommendation, summary, greenerAlternative);
     }
 
     private String normalizeLabel(String label) {
@@ -211,7 +297,33 @@ public class ProductService {
                 .collect(Collectors.toSet());
     }
 
+    private boolean containsAny(String value, String... phrases) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        for (String phrase : phrases) {
+            if (value.contains(normalizeLabel(phrase))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private record RatingDecision(
+            int ecoScore,
+            double co2Gram,
+            String recyclability,
+            String altRecommendation,
+            String summary,
+            boolean greenerAlternative
+    ) {
     }
 }
