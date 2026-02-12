@@ -97,7 +97,7 @@ public class LLMService {
         }
 
         try {
-            String model = resolveModel();
+            String model = resolveVisionModel();
             String sanitizedImage = sanitizeImageBase64(imageBase64);
             if (sanitizedImage.isBlank()) {
                 return "";
@@ -113,7 +113,8 @@ public class LLMService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("Gemini image detection failed: HTTP {} body={}", response.statusCode(), response.body());
+                log.warn("Gemini image detection failed: model={} HTTP {} body={}",
+                        model, response.statusCode(), response.body());
                 return "";
             }
 
@@ -172,6 +173,20 @@ public class LLMService {
             return configuredModel;
         }
         return "gemini-2.0-flash";
+    }
+
+    private String resolveVisionModel() {
+        String envVisionModel = environment.getProperty("GEMINI_VISION_MODEL");
+        if (envVisionModel != null && !envVisionModel.isBlank()) {
+            return envVisionModel;
+        }
+
+        String configuredVisionModel = environment.getProperty("gemini.api.vision.model");
+        if (configuredVisionModel != null && !configuredVisionModel.isBlank()) {
+            return configuredVisionModel;
+        }
+
+        return "gemini-2.5-flash-lite";
     }
 
     private boolean isGeminiProviderEnabled() {
