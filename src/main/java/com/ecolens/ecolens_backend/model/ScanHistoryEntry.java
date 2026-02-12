@@ -17,6 +17,9 @@ public class ScanHistoryEntry {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "user_id", nullable = false)
+    private String userId;
+
     @Column(name = "item_name", nullable = false)
     private String itemName;
 
@@ -35,7 +38,15 @@ public class ScanHistoryEntry {
     public ScanHistoryEntry() {
     }
 
-    public ScanHistoryEntry(String itemName, String category, Integer ecoScore, Double confidence, LocalDateTime scannedAt) {
+    public ScanHistoryEntry(
+            String userId,
+            String itemName,
+            String category,
+            Integer ecoScore,
+            Double confidence,
+            LocalDateTime scannedAt
+    ) {
+        this.userId = userId;
         this.itemName = itemName;
         this.category = category;
         this.ecoScore = ecoScore;
@@ -45,6 +56,14 @@ public class ScanHistoryEntry {
 
     public Long getId() {
         return id;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public String getItemName() {

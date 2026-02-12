@@ -20,8 +20,10 @@ public class HistoryService {
         this.scanHistoryRepository = scanHistoryRepository;
     }
 
-    public HistoryEntryResponse save(HistoryEntryRequest request) {
+    public HistoryEntryResponse save(HistoryEntryRequest request, String requestedUserId) {
+        String userId = resolveUserId(request.getUserId(), requestedUserId);
         ScanHistoryEntry entry = new ScanHistoryEntry(
+                userId,
                 safe(request.getItem(), "Unknown item"),
                 safe(request.getCategory(), "unknown"),
                 request.getEcoScore() == null ? 0 : request.getEcoScore(),
@@ -32,16 +34,18 @@ public class HistoryService {
         return toResponse(saved);
     }
 
-    public List<HistoryEntryResponse> list(boolean highImpactOnly) {
+    public List<HistoryEntryResponse> list(boolean highImpactOnly, String requestedUserId) {
+        String userId = resolveUserId(null, requestedUserId);
         List<ScanHistoryEntry> entries = highImpactOnly
-                ? scanHistoryRepository.findByEcoScoreLessThanOrderByScannedAtDesc(40)
-                : scanHistoryRepository.findAllByOrderByScannedAtDesc();
+                ? scanHistoryRepository.findByUserIdAndEcoScoreLessThanOrderByScannedAtDesc(userId, 40)
+                : scanHistoryRepository.findAllByUserIdOrderByScannedAtDesc(userId);
 
         return entries.stream().map(this::toResponse).toList();
     }
 
-    public HistoryStatsResponse stats() {
-        List<ScanHistoryEntry> entries = scanHistoryRepository.findAll();
+    public HistoryStatsResponse stats(String requestedUserId) {
+        String userId = resolveUserId(null, requestedUserId);
+        List<ScanHistoryEntry> entries = scanHistoryRepository.findAllByUserId(userId);
         HistoryStatsResponse response = new HistoryStatsResponse();
 
         if (entries.isEmpty()) {
@@ -75,12 +79,23 @@ public class HistoryService {
     private HistoryEntryResponse toResponse(ScanHistoryEntry entry) {
         HistoryEntryResponse response = new HistoryEntryResponse();
         response.setId(String.valueOf(entry.getId()));
+        response.setUserId(entry.getUserId());
         response.setItem(entry.getItemName());
         response.setCategory(entry.getCategory());
         response.setEcoScore(entry.getEcoScore());
         response.setConfidence(entry.getConfidence());
         response.setTimestamp(entry.getScannedAt().toString());
         return response;
+    }
+
+    private String resolveUserId(String requestBodyUserId, String queryUserId) {
+        if (requestBodyUserId != null && !requestBodyUserId.isBlank()) {
+            return requestBodyUserId.trim();
+        }
+        if (queryUserId != null && !queryUserId.isBlank()) {
+            return queryUserId.trim();
+        }
+        return "anonymous";
     }
 
     private String safe(String value, String fallback) {

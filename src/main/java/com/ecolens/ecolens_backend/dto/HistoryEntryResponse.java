@@ -3,6 +3,7 @@ package com.ecolens.ecolens_backend.dto;
 public class HistoryEntryResponse {
 
     private String id;
+    private String userId;
     private String item;
     private String category;
     private Integer ecoScore;
@@ -18,6 +19,14 @@ public class HistoryEntryResponse {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public String getItem() {

@@ -2,12 +2,21 @@ package com.ecolens.ecolens_backend.dto;
 
 public class HistoryEntryRequest {
 
+    private String userId;
     private String item;
     private String category;
     private Integer ecoScore;
     private Double confidence;
 
     public HistoryEntryRequest() {
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public String getItem() {

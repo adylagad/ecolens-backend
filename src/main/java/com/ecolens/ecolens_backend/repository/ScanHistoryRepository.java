@@ -11,4 +11,10 @@ public interface ScanHistoryRepository extends JpaRepository<ScanHistoryEntry, L
     List<ScanHistoryEntry> findAllByOrderByScannedAtDesc();
 
     List<ScanHistoryEntry> findByEcoScoreLessThanOrderByScannedAtDesc(Integer threshold);
+
+    List<ScanHistoryEntry> findAllByUserIdOrderByScannedAtDesc(String userId);
+
+    List<ScanHistoryEntry> findByUserIdAndEcoScoreLessThanOrderByScannedAtDesc(String userId, Integer threshold);
+
+    List<ScanHistoryEntry> findAllByUserId(String userId);
 }

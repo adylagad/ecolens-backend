@@ -26,19 +26,25 @@ public class HistoryController {
     }
 
     @PostMapping
-    public ResponseEntity<HistoryEntryResponse> save(@RequestBody HistoryEntryRequest request) {
-        return ResponseEntity.ok(historyService.save(request));
+    public ResponseEntity<HistoryEntryResponse> save(
+            @RequestBody HistoryEntryRequest request,
+            @RequestParam(name = "userId", required = false) String userId
+    ) {
+        return ResponseEntity.ok(historyService.save(request, userId));
     }
 
     @GetMapping
     public ResponseEntity<List<HistoryEntryResponse>> list(
-            @RequestParam(name = "highImpactOnly", defaultValue = "false") boolean highImpactOnly
+            @RequestParam(name = "highImpactOnly", defaultValue = "false") boolean highImpactOnly,
+            @RequestParam(name = "userId", required = false) String userId
     ) {
-        return ResponseEntity.ok(historyService.list(highImpactOnly));
+        return ResponseEntity.ok(historyService.list(highImpactOnly, userId));
     }
 
     @GetMapping("/stats")
-    public ResponseEntity<HistoryStatsResponse> stats() {
-        return ResponseEntity.ok(historyService.stats());
+    public ResponseEntity<HistoryStatsResponse> stats(
+            @RequestParam(name = "userId", required = false) String userId
+    ) {
+        return ResponseEntity.ok(historyService.stats(userId));
     }
 }
