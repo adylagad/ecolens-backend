@@ -25,6 +25,7 @@ public class ProductService {
     private static final Logger log = LoggerFactory.getLogger(ProductService.class);
     private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^a-z0-9]+");
     private static final double FUZZY_MATCH_THRESHOLD = 0.45;
+    private static final double DEFAULT_METADATA_INFERENCE_CONFIDENCE_MULTIPLIER = 0.84;
     private static final Map<String, String> LABEL_ALIASES = Map.ofEntries(
             Map.entry("paper coffee cup", "paper cup"),
             Map.entry("disposable coffee cup", "paper cup"),
@@ -37,6 +38,30 @@ public class ProductService {
             Map.entry("reusable coffee cup", "coffee cup"),
             Map.entry("takeaway container", "food packaging"),
             Map.entry("food container", "food packaging")
+    );
+    private static final List<MetadataInferenceRule> METADATA_INFERENCE_RULES = List.of(
+            new MetadataInferenceRule("plastic_bottle", List.of("plastic bottle", "water bottle"),
+                    "plastic", Boolean.FALSE, Boolean.TRUE, 0, "single_use", "Low", 0.82),
+            new MetadataInferenceRule("reusable_bottle", List.of("reusable bottle", "steel bottle", "insulated bottle"),
+                    "stainless steel", Boolean.TRUE, Boolean.FALSE, 35, "reusable", "High", 0.9),
+            new MetadataInferenceRule("paper_cup", List.of("paper cup", "coffee cup", "disposable cup"),
+                    "paper lined", Boolean.FALSE, Boolean.TRUE, 20, "single_use", "Medium", 0.84),
+            new MetadataInferenceRule("food_packaging_single_use", List.of("food packaging", "food container", "takeaway container"),
+                    "mixed plastic", Boolean.FALSE, Boolean.TRUE, 0, "single_use", "Low", 0.82),
+            new MetadataInferenceRule("glass_container", List.of("glass bottle", "glass container"),
+                    "glass", Boolean.TRUE, Boolean.FALSE, 35, "reusable", "High", 0.9),
+            new MetadataInferenceRule("plastic_bag", List.of("plastic bag", "grocery bag"),
+                    "plastic", Boolean.FALSE, Boolean.TRUE, 0, "single_use", "Low", 0.82),
+            new MetadataInferenceRule("cloth_bag", List.of("cloth bag", "jute bag", "shopping bag"),
+                    "cloth", Boolean.TRUE, Boolean.FALSE, 60, "reusable", "High", 0.9),
+            new MetadataInferenceRule("disposable_utensils", List.of("plastic straw", "disposable cutlery", "plastic fork"),
+                    "plastic", Boolean.FALSE, Boolean.TRUE, 0, "single_use", "Low", 0.82),
+            new MetadataInferenceRule("reusable_utensils", List.of("metal straw", "reusable cutlery"),
+                    "stainless steel", Boolean.TRUE, Boolean.FALSE, 30, "reusable", "High", 0.9),
+            new MetadataInferenceRule("fast_fashion", List.of("fast fashion", "polyester shirt"),
+                    "polyester", Boolean.FALSE, Boolean.FALSE, 0, "fast_fashion", "Low", 0.8),
+            new MetadataInferenceRule("slow_fashion", List.of("second hand", "denim jacket"),
+                    "denim", Boolean.TRUE, Boolean.FALSE, 0, "long_life", "Medium", 0.88)
     );
 
     private final ProductRepository productRepository;
@@ -75,7 +100,8 @@ public class ProductService {
         Product product = findBestProduct(normalizedLabel)
                 .orElseGet(() -> createDefaultProduct(normalizedLabel));
 
-        RatingDecision ratingDecision = rateProduct(product);
+        MetadataResolution metadataResolution = resolveMetadata(product, normalizedLabel);
+        RatingDecision ratingDecision = rateProduct(product, metadataResolution);
 
         if (product.getExplanation() == null || product.getExplanation().isBlank()) {
             generationStatus = "attempted";
@@ -116,7 +142,16 @@ public class ProductService {
             explanation = ratingDecision.summary();
         }
         response.setExplanation(explanation);
-        response.setConfidence(confidence);
+        double adjustedConfidence = applyMetadataConfidencePenalty(confidence, metadataResolution);
+        response.setConfidence(roundThreeDecimals(adjustedConfidence));
+
+        if (metadataResolution.inferred()) {
+            log.info("Metadata inference applied: rule={}, fields={}, confidence={}=>{}",
+                    metadataResolution.ruleCode(),
+                    metadataResolution.inferredFields(),
+                    roundThreeDecimals(clampDouble(confidence, 0.0, 1.0)),
+                    roundThreeDecimals(adjustedConfidence));
+        }
 
         log.info("ProductService handled recognition: inputSource={}, label='{}', product='{}', llm={}, ratedEcoScore={}, greenerAlternative={}",
                 inputSource, normalizedLabel, safe(product.getName()), generationStatus,
@@ -135,15 +170,104 @@ public class ProductService {
                 "Unknown",
                 "Consider a reusable alternative",
                 "",
-                "unknown",
-                Boolean.FALSE,
-                Boolean.FALSE,
-                0,
-                "unknown"
+                "",
+                null,
+                null,
+                null,
+                ""
         );
     }
 
-    private RatingDecision rateProduct(Product product) {
+    private MetadataResolution resolveMetadata(Product product, String normalizedLabel) {
+        String combined = normalizeLabel((safe(product.getCategory()) + " " + safe(product.getName())).trim());
+        String materialNormalized = normalizeLabel(product.getMaterial());
+        String lifecycleNormalized = normalizeLabel(product.getLifecycleType());
+        String recyclabilityRaw = safe(product.getRecyclability());
+
+        boolean materialMissing = isMissingText(materialNormalized);
+        boolean lifecycleMissing = isMissingText(lifecycleNormalized);
+        boolean reusableMissing = product.getReusable() == null;
+        boolean singleUseMissing = product.getSingleUse() == null;
+        boolean recycledContentMissing = product.getRecycledContentPercent() == null;
+        boolean recyclabilityMissing = isMissingText(normalizeLabel(recyclabilityRaw));
+
+        boolean anyMissing = materialMissing || lifecycleMissing || reusableMissing
+                || singleUseMissing || recycledContentMissing || recyclabilityMissing;
+
+        Optional<MetadataInferenceRule> ruleOptional = anyMissing
+                ? matchInferenceRule(normalizedLabel, combined)
+                : Optional.empty();
+
+        String resolvedMaterial = materialNormalized;
+        String resolvedLifecycle = lifecycleNormalized;
+        boolean resolvedReusable = resolveReusable(product, lifecycleNormalized, combined);
+        boolean resolvedSingleUse = resolveSingleUse(product, lifecycleNormalized, combined);
+        int resolvedRecycledContent = product.getRecycledContentPercent() == null
+                ? -1
+                : clamp(product.getRecycledContentPercent(), 0, 100);
+        String resolvedRecyclability = recyclabilityRaw;
+        List<String> inferredFields = new ArrayList<>();
+        String ruleCode = "none";
+        double confidenceMultiplier = 1.0;
+
+        if (ruleOptional.isPresent()) {
+            MetadataInferenceRule rule = ruleOptional.get();
+            ruleCode = rule.code();
+            confidenceMultiplier = clampDouble(rule.confidenceMultiplier(), 0.0, 1.0);
+            if (materialMissing && !isMissingText(normalizeLabel(rule.material()))) {
+                resolvedMaterial = normalizeLabel(rule.material());
+                inferredFields.add("material");
+            }
+            if (lifecycleMissing && !isMissingText(normalizeLabel(rule.lifecycleType()))) {
+                resolvedLifecycle = normalizeLabel(rule.lifecycleType());
+                inferredFields.add("lifecycleType");
+            }
+            if (reusableMissing && rule.reusable() != null) {
+                resolvedReusable = rule.reusable();
+                inferredFields.add("isReusable");
+            }
+            if (singleUseMissing && rule.singleUse() != null) {
+                resolvedSingleUse = rule.singleUse();
+                inferredFields.add("isSingleUse");
+            }
+            if (recycledContentMissing && rule.recycledContentPercent() != null) {
+                resolvedRecycledContent = clamp(rule.recycledContentPercent(), 0, 100);
+                inferredFields.add("recycledContentPercent");
+            }
+            if (recyclabilityMissing && !isMissingText(normalizeLabel(rule.recyclability()))) {
+                resolvedRecyclability = rule.recyclability();
+                inferredFields.add("recyclability");
+            }
+        }
+
+        if (resolvedRecycledContent < 0) {
+            resolvedRecycledContent = 0;
+        }
+        if (isMissingText(resolvedMaterial)) {
+            resolvedMaterial = normalizeLabel(combined);
+        }
+        if (isMissingText(resolvedLifecycle)) {
+            resolvedLifecycle = normalizeLabel(product.getLifecycleType());
+        }
+        if (isMissingText(normalizeLabel(resolvedRecyclability))) {
+            resolvedRecyclability = "Unknown";
+        }
+
+        return new MetadataResolution(
+                resolvedMaterial,
+                resolvedLifecycle,
+                resolvedReusable,
+                resolvedSingleUse,
+                resolvedRecycledContent,
+                resolvedRecyclability,
+                !inferredFields.isEmpty(),
+                inferredFields,
+                inferredFields.isEmpty() ? 1.0 : confidenceMultiplier,
+                ruleCode
+        );
+    }
+
+    private RatingDecision rateProduct(Product product, MetadataResolution metadataResolution) {
         int catalogEcoScore = product.getEcoScore() == null
                 ? scoringProperties.getDefaultCatalogEcoScore()
                 : product.getEcoScore();
@@ -154,18 +278,18 @@ public class ProductService {
         int co2Score = co2ScoreResult.score();
         double catalogContribution = scoringProperties.getCatalogWeight() * catalogEcoScore;
         double co2Contribution = scoringProperties.getCo2Weight() * co2Score;
-        String recyclability = safe(product.getRecyclability());
+        String recyclability = metadataResolution.recyclability();
         String recyclabilityNormalized = normalizeLabel(recyclability);
         String category = normalizeLabel(product.getCategory());
         String name = normalizeLabel(product.getName());
         String combined = (category + " " + name).trim();
-        String material = normalizeLabel(product.getMaterial());
-        String lifecycleType = normalizeLabel(product.getLifecycleType());
+        String material = metadataResolution.material();
+        String lifecycleType = metadataResolution.lifecycleType();
 
-        boolean reusable = resolveReusable(product, lifecycleType, combined);
-        boolean singleUse = resolveSingleUse(product, lifecycleType, combined);
+        boolean reusable = metadataResolution.reusable();
+        boolean singleUse = metadataResolution.singleUse();
         FeatureAdjustmentResult featureAdjustmentResult = computeFeatureAdjustment(
-                singleUse, reusable, material, combined, recyclabilityNormalized, lifecycleType, product.getRecycledContentPercent()
+                singleUse, reusable, material, combined, recyclabilityNormalized, lifecycleType, metadataResolution.recycledContentPercent()
         );
         int featureAdjustment = featureAdjustmentResult.total();
         List<ScoreFactor> scoreFactors = new ArrayList<>();
@@ -183,6 +307,16 @@ public class ProductService {
                 "co2Score=" + co2Score + ", co2Gram=" + roundTwoDecimals(co2) + ", weight=" + scoringProperties.getCo2Weight()
                         + ", " + co2ScoreResult.detail()
         ));
+        if (metadataResolution.inferred()) {
+            scoreFactors.add(new ScoreFactor(
+                    "metadata_inference",
+                    "Metadata inferred from label/category",
+                    0.0,
+                    "rule=" + metadataResolution.ruleCode()
+                            + ", fields=" + String.join("|", metadataResolution.inferredFields())
+                            + ", confidenceMultiplier=" + metadataResolution.confidenceMultiplier()
+            ));
+        }
         scoreFactors.addAll(featureAdjustmentResult.factors());
 
         double score = catalogContribution
@@ -422,6 +556,31 @@ public class ProductService {
         return containsAny(combined, "reusable", "refillable", "cloth bag", "steel bottle", "led");
     }
 
+    private Optional<MetadataInferenceRule> matchInferenceRule(String normalizedLabel, String combined) {
+        String inferenceContext = (safe(normalizedLabel) + " " + safe(combined)).trim();
+        for (MetadataInferenceRule rule : METADATA_INFERENCE_RULES) {
+            for (String phrase : rule.matchPhrases()) {
+                String normalizedPhrase = normalizeLabel(phrase);
+                if (!normalizedPhrase.isBlank() && inferenceContext.contains(normalizedPhrase)) {
+                    return Optional.of(rule);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private double applyMetadataConfidencePenalty(double confidence, MetadataResolution metadataResolution) {
+        double normalizedConfidence = clampDouble(confidence, 0.0, 1.0);
+        if (!metadataResolution.inferred()) {
+            return normalizedConfidence;
+        }
+        double fieldPenalty = 1.0 - Math.min(0.18, metadataResolution.inferredFields().size() * 0.03);
+        double multiplier = metadataResolution.confidenceMultiplier() <= 0.0
+                ? DEFAULT_METADATA_INFERENCE_CONFIDENCE_MULTIPLIER
+                : metadataResolution.confidenceMultiplier();
+        return clampDouble(normalizedConfidence * multiplier * fieldPenalty, 0.0, 1.0);
+    }
+
     private String normalizeLabel(String label) {
         if (label == null) {
             return "";
@@ -435,6 +594,15 @@ public class ProductService {
             return "";
         }
         return LABEL_ALIASES.getOrDefault(normalizedLabel, normalizedLabel);
+    }
+
+    private boolean isMissingText(String value) {
+        String normalized = normalizeLabel(value);
+        return normalized.isBlank()
+                || "unknown".equals(normalized)
+                || "n a".equals(normalized)
+                || "na".equals(normalized)
+                || "none".equals(normalized);
     }
 
     private Optional<Product> findBestProduct(String normalizedLabel) {
@@ -546,6 +714,9 @@ public class ProductService {
     }
 
     private double clampDouble(double value, double min, double max) {
+        if (!Double.isFinite(value)) {
+            return min;
+        }
         return Math.max(min, Math.min(max, value));
     }
 
@@ -571,5 +742,32 @@ public class ProductService {
     }
 
     private record Co2ScoreResult(int score, String detail) {
+    }
+
+    private record MetadataResolution(
+            String material,
+            String lifecycleType,
+            boolean reusable,
+            boolean singleUse,
+            int recycledContentPercent,
+            String recyclability,
+            boolean inferred,
+            List<String> inferredFields,
+            double confidenceMultiplier,
+            String ruleCode
+    ) {
+    }
+
+    private record MetadataInferenceRule(
+            String code,
+            List<String> matchPhrases,
+            String material,
+            Boolean reusable,
+            Boolean singleUse,
+            Integer recycledContentPercent,
+            String lifecycleType,
+            String recyclability,
+            double confidenceMultiplier
+    ) {
     }
 }
