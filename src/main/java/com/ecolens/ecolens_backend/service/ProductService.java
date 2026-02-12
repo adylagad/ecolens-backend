@@ -1,5 +1,6 @@
 package com.ecolens.ecolens_backend.service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import com.ecolens.ecolens_backend.config.ScoringProperties;
 import com.ecolens.ecolens_backend.dto.RecognitionResponse;
+import com.ecolens.ecolens_backend.dto.ScoreFactor;
 import com.ecolens.ecolens_backend.model.Product;
 import com.ecolens.ecolens_backend.repository.ProductRepository;
 
@@ -96,10 +98,19 @@ public class ProductService {
         response.setName(product.getName());
         response.setCategory(product.getCategory());
         response.setEcoScore(ratingDecision.ecoScore());
+        response.setCatalogEcoScore(ratingDecision.catalogEcoScore());
         response.setCo2Score(ratingDecision.co2Score());
         response.setCo2Gram(ratingDecision.co2Gram());
         response.setRecyclability(ratingDecision.recyclability());
         response.setAltRecommendation(ratingDecision.altRecommendation());
+        response.setCatalogContribution(ratingDecision.catalogContribution());
+        response.setCo2Contribution(ratingDecision.co2Contribution());
+        response.setFeatureAdjustment(ratingDecision.featureAdjustment());
+        response.setPreBoostScore(ratingDecision.preBoostScore());
+        response.setGreenerAlternativeBoost(ratingDecision.greenerAlternativeBoost());
+        response.setGreenerAlternativeBoostApplied(ratingDecision.greenerAlternative());
+        response.setScoringVersion(scoringProperties.getVersion());
+        response.setScoreFactors(ratingDecision.scoreFactors());
         String explanation = product.getExplanation() == null ? "" : product.getExplanation();
         if (llmService.isFallbackExplanation(explanation) || explanation.isBlank()) {
             explanation = ratingDecision.summary();
@@ -135,6 +146,8 @@ public class ProductService {
                 ? scoringProperties.getDefaultCarbonImpactGram()
                 : product.getCarbonImpact();
         int co2Score = computeCo2Score(co2);
+        double catalogContribution = scoringProperties.getCatalogWeight() * catalogEcoScore;
+        double co2Contribution = scoringProperties.getCo2Weight() * co2Score;
         String recyclability = safe(product.getRecyclability());
         String category = normalizeLabel(product.getCategory());
         String name = normalizeLabel(product.getName());
@@ -142,15 +155,41 @@ public class ProductService {
 
         boolean singleUse = containsAny(combined, "single use", "single-use", "disposable", "plastic bottle", "plastic bag");
         boolean reusable = containsAny(combined, "reusable", "refillable", "cloth bag", "steel bottle", "led");
-        int featureAdjustment = computeFeatureAdjustment(singleUse, reusable, combined, normalizeLabel(recyclability));
+        FeatureAdjustmentResult featureAdjustmentResult = computeFeatureAdjustment(
+                singleUse, reusable, combined, normalizeLabel(recyclability)
+        );
+        int featureAdjustment = featureAdjustmentResult.total();
+        List<ScoreFactor> scoreFactors = new ArrayList<>();
 
-        double score = scoringProperties.getCatalogWeight() * catalogEcoScore
-                + scoringProperties.getCo2Weight() * co2Score
+        scoreFactors.add(new ScoreFactor(
+                "catalog_weight",
+                "Catalog eco score contribution",
+                roundTwoDecimals(catalogContribution),
+                "catalogEcoScore=" + catalogEcoScore + ", weight=" + scoringProperties.getCatalogWeight()
+        ));
+        scoreFactors.add(new ScoreFactor(
+                "co2_weight",
+                "CO2 score contribution",
+                roundTwoDecimals(co2Contribution),
+                "co2Score=" + co2Score + ", co2Gram=" + roundTwoDecimals(co2) + ", weight=" + scoringProperties.getCo2Weight()
+        ));
+        scoreFactors.addAll(featureAdjustmentResult.factors());
+
+        double score = catalogContribution
+                + co2Contribution
                 + featureAdjustment;
 
         boolean greenerAlternative = reusable || score >= scoringProperties.getGreenerAlternativeThreshold();
+        int greenerBoost = 0;
         if (greenerAlternative) {
-            score += scoringProperties.getGreenerAlternativeBoost();
+            greenerBoost = scoringProperties.getGreenerAlternativeBoost();
+            score += greenerBoost;
+            scoreFactors.add(new ScoreFactor(
+                    "greener_boost",
+                    "Greener alternative boost",
+                    (double) greenerBoost,
+                    "threshold=" + scoringProperties.getGreenerAlternativeThreshold()
+            ));
         }
         int ecoScore = clamp((int) Math.round(score), scoringProperties.getMinScore(), scoringProperties.getMaxScore());
 
@@ -170,42 +209,83 @@ public class ProductService {
             summary = "This item has a relatively good eco profile compared with common alternatives.";
         }
 
-        return new RatingDecision(ecoScore, co2Score, co2, recyclability, recommendation, summary, greenerAlternative);
+        return new RatingDecision(
+                ecoScore,
+                catalogEcoScore,
+                co2Score,
+                co2,
+                recyclability,
+                recommendation,
+                summary,
+                greenerAlternative,
+                roundTwoDecimals(catalogContribution),
+                roundTwoDecimals(co2Contribution),
+                featureAdjustment,
+                roundTwoDecimals(catalogContribution + co2Contribution + featureAdjustment),
+                greenerBoost,
+                scoreFactors
+        );
     }
 
-    private int computeFeatureAdjustment(boolean singleUse, boolean reusable, String combined, String recyclabilityNormalized) {
+    private FeatureAdjustmentResult computeFeatureAdjustment(
+            boolean singleUse,
+            boolean reusable,
+            String combined,
+            String recyclabilityNormalized
+    ) {
         ScoringProperties.Adjustments adjustments = scoringProperties.getAdjustments();
         int adjustment = 0;
+        List<ScoreFactor> factors = new ArrayList<>();
 
         if (singleUse) {
             adjustment += adjustments.getSingleUsePenalty();
+            factors.add(new ScoreFactor("single_use_penalty", "Single-use penalty",
+                    (double) adjustments.getSingleUsePenalty(), "single-use/disposable pattern"));
         }
         if (reusable) {
             adjustment += adjustments.getReusableBonus();
+            factors.add(new ScoreFactor("reusable_bonus", "Reusable bonus",
+                    (double) adjustments.getReusableBonus(), "reusable/refillable pattern"));
         }
         if (containsAny(combined, "plastic")) {
             adjustment += adjustments.getPlasticPenalty();
+            factors.add(new ScoreFactor("plastic_penalty", "Plastic material penalty",
+                    (double) adjustments.getPlasticPenalty(), "material contains plastic"));
         }
         if (containsAny(combined, "paper")) {
             adjustment += adjustments.getPaperPenalty();
+            factors.add(new ScoreFactor("paper_penalty", "Paper material adjustment",
+                    (double) adjustments.getPaperPenalty(), "material contains paper"));
         }
         if (containsAny(combined, "aluminum", "glass")) {
             adjustment += adjustments.getAluminumGlassBonus();
+            factors.add(new ScoreFactor("aluminum_glass_bonus", "Aluminum/Glass bonus",
+                    (double) adjustments.getAluminumGlassBonus(), "material contains aluminum/glass"));
         }
         if (containsAny(combined, "cloth", "recycled")) {
             adjustment += adjustments.getClothRecycledBonus();
+            factors.add(new ScoreFactor("cloth_recycled_bonus", "Cloth/Recycled bonus",
+                    (double) adjustments.getClothRecycledBonus(), "material contains cloth/recycled"));
         }
         if (containsAny(recyclabilityNormalized, "high")) {
             adjustment += adjustments.getRecyclabilityHighBonus();
+            factors.add(new ScoreFactor("recyclability_high_bonus", "High recyclability bonus",
+                    (double) adjustments.getRecyclabilityHighBonus(), "recyclability=high"));
         } else if (containsAny(recyclabilityNormalized, "medium")) {
             adjustment += adjustments.getRecyclabilityMediumBonus();
+            factors.add(new ScoreFactor("recyclability_medium_bonus", "Medium recyclability bonus",
+                    (double) adjustments.getRecyclabilityMediumBonus(), "recyclability=medium"));
         } else if (containsAny(recyclabilityNormalized, "low", "unknown")) {
             adjustment += adjustments.getRecyclabilityLowPenalty();
+            factors.add(new ScoreFactor("recyclability_low_penalty", "Low recyclability penalty",
+                    (double) adjustments.getRecyclabilityLowPenalty(), "recyclability=low/unknown"));
         } else if (containsAny(recyclabilityNormalized, "organic")) {
             adjustment += adjustments.getRecyclabilityOrganicBonus();
+            factors.add(new ScoreFactor("recyclability_organic_bonus", "Organic recyclability bonus",
+                    (double) adjustments.getRecyclabilityOrganicBonus(), "recyclability=organic"));
         }
 
-        return adjustment;
+        return new FeatureAdjustmentResult(adjustment, factors);
     }
 
     private int computeCo2Score(double co2Gram) {
@@ -338,14 +418,28 @@ public class ProductService {
         return value == null ? "" : value;
     }
 
+    private double roundTwoDecimals(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
     private record RatingDecision(
             int ecoScore,
+            int catalogEcoScore,
             int co2Score,
             double co2Gram,
             String recyclability,
             String altRecommendation,
             String summary,
-            boolean greenerAlternative
+            boolean greenerAlternative,
+            double catalogContribution,
+            double co2Contribution,
+            int featureAdjustment,
+            double preBoostScore,
+            int greenerAlternativeBoost,
+            List<ScoreFactor> scoreFactors
     ) {
+    }
+
+    private record FeatureAdjustmentResult(int total, List<ScoreFactor> factors) {
     }
 }

@@ -1,16 +1,27 @@
 package com.ecolens.ecolens_backend.dto;
 
+import java.util.List;
+
 public class RecognitionResponse {
 
     private String name;
     private String category;
     private Integer ecoScore;
+    private Integer catalogEcoScore;
     private Integer co2Score;
     private Double co2Gram;
     private String recyclability;
     private String altRecommendation;
     private String explanation;
     private Double confidence;
+    private Double catalogContribution;
+    private Double co2Contribution;
+    private Integer featureAdjustment;
+    private Double preBoostScore;
+    private Integer greenerAlternativeBoost;
+    private Boolean greenerAlternativeBoostApplied;
+    private String scoringVersion;
+    private List<ScoreFactor> scoreFactors;
 
     public RecognitionResponse() {
     }
@@ -37,6 +48,14 @@ public class RecognitionResponse {
 
     public void setEcoScore(Integer ecoScore) {
         this.ecoScore = ecoScore;
+    }
+
+    public Integer getCatalogEcoScore() {
+        return catalogEcoScore;
+    }
+
+    public void setCatalogEcoScore(Integer catalogEcoScore) {
+        this.catalogEcoScore = catalogEcoScore;
     }
 
     public Integer getCo2Score() {
@@ -85,5 +104,69 @@ public class RecognitionResponse {
 
     public void setConfidence(Double confidence) {
         this.confidence = confidence;
+    }
+
+    public Double getCatalogContribution() {
+        return catalogContribution;
+    }
+
+    public void setCatalogContribution(Double catalogContribution) {
+        this.catalogContribution = catalogContribution;
+    }
+
+    public Double getCo2Contribution() {
+        return co2Contribution;
+    }
+
+    public void setCo2Contribution(Double co2Contribution) {
+        this.co2Contribution = co2Contribution;
+    }
+
+    public Integer getFeatureAdjustment() {
+        return featureAdjustment;
+    }
+
+    public void setFeatureAdjustment(Integer featureAdjustment) {
+        this.featureAdjustment = featureAdjustment;
+    }
+
+    public Double getPreBoostScore() {
+        return preBoostScore;
+    }
+
+    public void setPreBoostScore(Double preBoostScore) {
+        this.preBoostScore = preBoostScore;
+    }
+
+    public Integer getGreenerAlternativeBoost() {
+        return greenerAlternativeBoost;
+    }
+
+    public void setGreenerAlternativeBoost(Integer greenerAlternativeBoost) {
+        this.greenerAlternativeBoost = greenerAlternativeBoost;
+    }
+
+    public Boolean getGreenerAlternativeBoostApplied() {
+        return greenerAlternativeBoostApplied;
+    }
+
+    public void setGreenerAlternativeBoostApplied(Boolean greenerAlternativeBoostApplied) {
+        this.greenerAlternativeBoostApplied = greenerAlternativeBoostApplied;
+    }
+
+    public String getScoringVersion() {
+        return scoringVersion;
+    }
+
+    public void setScoringVersion(String scoringVersion) {
+        this.scoringVersion = scoringVersion;
+    }
+
+    public List<ScoreFactor> getScoreFactors() {
+        return scoreFactors;
+    }
+
+    public void setScoreFactors(List<ScoreFactor> scoreFactors) {
+        this.scoreFactors = scoreFactors;
     }
 }

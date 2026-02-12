@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "scoring")
 public class ScoringProperties {
 
+    private String version = "v2-config-weighted";
     private int minScore = 0;
     private int maxScore = 100;
     private int defaultCatalogEcoScore = 50;
@@ -22,6 +23,14 @@ public class ScoringProperties {
 
     public int getMinScore() {
         return minScore;
+    }
+
+    public String getVersion() {
+        return version;
+    }
+
+    public void setVersion(String version) {
+        this.version = version;
     }
 
     public void setMinScore(int minScore) {
