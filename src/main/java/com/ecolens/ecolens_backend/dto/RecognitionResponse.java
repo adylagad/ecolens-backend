@@ -22,6 +22,9 @@ public class RecognitionResponse {
     private Boolean greenerAlternativeBoostApplied;
     private String scoringVersion;
     private List<ScoreFactor> scoreFactors;
+    private String catalogMatchStrategy;
+    private Double catalogCoverage;
+    private Boolean catalogAutoLearned;
 
     public RecognitionResponse() {
     }
@@ -168,5 +171,29 @@ public class RecognitionResponse {
 
     public void setScoreFactors(List<ScoreFactor> scoreFactors) {
         this.scoreFactors = scoreFactors;
+    }
+
+    public String getCatalogMatchStrategy() {
+        return catalogMatchStrategy;
+    }
+
+    public void setCatalogMatchStrategy(String catalogMatchStrategy) {
+        this.catalogMatchStrategy = catalogMatchStrategy;
+    }
+
+    public Double getCatalogCoverage() {
+        return catalogCoverage;
+    }
+
+    public void setCatalogCoverage(Double catalogCoverage) {
+        this.catalogCoverage = catalogCoverage;
+    }
+
+    public Boolean getCatalogAutoLearned() {
+        return catalogAutoLearned;
+    }
+
+    public void setCatalogAutoLearned(Boolean catalogAutoLearned) {
+        this.catalogAutoLearned = catalogAutoLearned;
     }
 }

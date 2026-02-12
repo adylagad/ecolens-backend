@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.ecolens.ecolens_backend.config.CatalogProperties;
 import com.ecolens.ecolens_backend.config.ScoringProperties;
 import com.ecolens.ecolens_backend.dto.RecognitionResponse;
 import com.ecolens.ecolens_backend.dto.ScoreFactor;
@@ -67,11 +68,18 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final LLMService llmService;
     private final ScoringProperties scoringProperties;
+    private final CatalogProperties catalogProperties;
 
-    public ProductService(ProductRepository productRepository, LLMService llmService, ScoringProperties scoringProperties) {
+    public ProductService(
+            ProductRepository productRepository,
+            LLMService llmService,
+            ScoringProperties scoringProperties,
+            CatalogProperties catalogProperties
+    ) {
         this.productRepository = productRepository;
         this.llmService = llmService;
         this.scoringProperties = scoringProperties;
+        this.catalogProperties = catalogProperties;
     }
 
     public RecognitionResponse handleRecognition(String detectedLabel, String imageBase64, double confidence) {
@@ -97,10 +105,18 @@ public class ProductService {
         String normalizedLabel = labelForLookup;
         String generationStatus = "skipped_cached_explanation";
 
-        Product product = findBestProduct(normalizedLabel)
-                .orElseGet(() -> createDefaultProduct(normalizedLabel));
+        ProductMatchResult productMatchResult = findBestProduct(normalizedLabel);
+        Product product = productMatchResult.product().orElseGet(() -> createDefaultProduct(normalizedLabel));
 
         MetadataResolution metadataResolution = resolveMetadata(product, normalizedLabel);
+        boolean autoLearned = false;
+        if (shouldAutoLearnProduct(productMatchResult, normalizedLabel, confidence, hasImage)) {
+            product = upsertAutoLearnedProduct(normalizedLabel, metadataResolution);
+            metadataResolution = resolveMetadata(product, normalizedLabel);
+            productMatchResult = new ProductMatchResult(Optional.of(product), "auto_learned", 0.0);
+            autoLearned = true;
+        }
+
         RatingDecision ratingDecision = rateProduct(product, metadataResolution);
 
         if (product.getExplanation() == null || product.getExplanation().isBlank()) {
@@ -137,6 +153,10 @@ public class ProductService {
         response.setGreenerAlternativeBoostApplied(ratingDecision.greenerAlternative());
         response.setScoringVersion(scoringProperties.getVersion());
         response.setScoreFactors(ratingDecision.scoreFactors());
+        double catalogCoverage = computeCatalogCoverage(productMatchResult, metadataResolution);
+        response.setCatalogMatchStrategy(productMatchResult.strategy());
+        response.setCatalogCoverage(roundThreeDecimals(catalogCoverage));
+        response.setCatalogAutoLearned(autoLearned);
         String explanation = product.getExplanation() == null ? "" : product.getExplanation();
         if (llmService.isFallbackExplanation(explanation) || explanation.isBlank()) {
             explanation = ratingDecision.summary();
@@ -152,6 +172,8 @@ public class ProductService {
                     roundThreeDecimals(clampDouble(confidence, 0.0, 1.0)),
                     roundThreeDecimals(adjustedConfidence));
         }
+        log.info("Catalog coverage: strategy={}, coverage={}, autoLearned={}",
+                productMatchResult.strategy(), roundThreeDecimals(catalogCoverage), autoLearned);
 
         log.info("ProductService handled recognition: inputSource={}, label='{}', product='{}', llm={}, ratedEcoScore={}, greenerAlternative={}",
                 inputSource, normalizedLabel, safe(product.getName()), generationStatus,
@@ -161,7 +183,7 @@ public class ProductService {
     }
 
     private Product createDefaultProduct(String detectedLabel) {
-        String fallbackName = detectedLabel.isBlank() ? "Unknown Product" : detectedLabel;
+        String fallbackName = detectedLabel.isBlank() ? "Unknown Product" : toDisplayLabel(detectedLabel);
         return new Product(
                 fallbackName,
                 "unknown",
@@ -176,6 +198,71 @@ public class ProductService {
                 null,
                 ""
         );
+    }
+
+    private boolean shouldAutoLearnProduct(
+            ProductMatchResult productMatchResult,
+            String normalizedLabel,
+            double confidence,
+            boolean hasImage
+    ) {
+        if (!catalogProperties.isAutoLearnEnabled()) {
+            return false;
+        }
+        if (productMatchResult.product().isPresent()) {
+            return false;
+        }
+        if (catalogProperties.isAutoLearnRequireImage() && !hasImage) {
+            return false;
+        }
+        if (normalizedLabel == null || normalizedLabel.isBlank()) {
+            return false;
+        }
+        if (isMissingText(normalizedLabel) || "unknown product".equals(normalizedLabel)) {
+            return false;
+        }
+        return clampDouble(confidence, 0.0, 1.0) >= clampDouble(catalogProperties.getAutoLearnMinConfidence(), 0.0, 1.0);
+    }
+
+    private Product upsertAutoLearnedProduct(String normalizedLabel, MetadataResolution metadataResolution) {
+        String category = normalizedLabel;
+        String displayName = toDisplayLabel(normalizedLabel);
+
+        Optional<Product> existing = productRepository.findByNameIgnoreCase(displayName);
+        if (existing.isEmpty()) {
+            existing = productRepository.findFirstByCategoryIgnoreCase(category);
+        }
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        boolean inferredMaterial = metadataResolution.inferredFields().contains("material");
+        boolean inferredReusable = metadataResolution.inferredFields().contains("isReusable");
+        boolean inferredSingleUse = metadataResolution.inferredFields().contains("isSingleUse");
+        boolean inferredRecycledContent = metadataResolution.inferredFields().contains("recycledContentPercent");
+        boolean inferredLifecycle = metadataResolution.inferredFields().contains("lifecycleType");
+        boolean inferredRecyclability = metadataResolution.inferredFields().contains("recyclability");
+
+        Product learned = new Product(
+                displayName,
+                category,
+                scoringProperties.getDefaultCatalogEcoScore(),
+                scoringProperties.getDefaultCarbonImpactGram(),
+                inferredRecyclability ? metadataResolution.recyclability() : "Unknown",
+                Boolean.TRUE.equals(inferredReusable ? metadataResolution.reusable() : null)
+                        ? "Great choice. Keep using reusable options."
+                        : "Consider switching to reusable/refillable alternatives.",
+                "",
+                inferredMaterial ? metadataResolution.material() : "",
+                inferredReusable ? metadataResolution.reusable() : null,
+                inferredSingleUse ? metadataResolution.singleUse() : null,
+                inferredRecycledContent ? metadataResolution.recycledContentPercent() : 0,
+                inferredLifecycle ? metadataResolution.lifecycleType() : ""
+        );
+        Product saved = productRepository.save(learned);
+        log.info("Catalog auto-learned new product: label='{}', savedName='{}', category='{}'",
+                normalizedLabel, saved.getName(), saved.getCategory());
+        return saved;
     }
 
     private MetadataResolution resolveMetadata(Product product, String normalizedLabel) {
@@ -581,6 +668,50 @@ public class ProductService {
         return clampDouble(normalizedConfidence * multiplier * fieldPenalty, 0.0, 1.0);
     }
 
+    private double computeCatalogCoverage(ProductMatchResult productMatchResult, MetadataResolution metadataResolution) {
+        CatalogProperties.Coverage coverage = catalogProperties.getCoverage();
+        double value;
+        switch (productMatchResult.strategy()) {
+            case "exact":
+                value = coverage.getExact();
+                break;
+            case "fuzzy":
+                value = Math.max(coverage.getFuzzyMin(), productMatchResult.score());
+                break;
+            case "auto_learned":
+                value = coverage.getAutoLearned();
+                break;
+            default:
+                value = coverage.getNone();
+                break;
+        }
+        if (metadataResolution.inferred() && !"exact".equals(productMatchResult.strategy())) {
+            value *= coverage.getInferencePenalty();
+        }
+        return clampDouble(value, 0.0, 1.0);
+    }
+
+    private String toDisplayLabel(String normalizedLabel) {
+        if (normalizedLabel == null || normalizedLabel.isBlank()) {
+            return "Unknown Product";
+        }
+        String[] parts = normalizedLabel.trim().split("\\s+");
+        StringBuilder builder = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            builder.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) {
+                builder.append(part.substring(1));
+            }
+        }
+        return builder.toString();
+    }
+
     private String normalizeLabel(String label) {
         if (label == null) {
             return "";
@@ -605,9 +736,9 @@ public class ProductService {
                 || "none".equals(normalized);
     }
 
-    private Optional<Product> findBestProduct(String normalizedLabel) {
+    private ProductMatchResult findBestProduct(String normalizedLabel) {
         if (normalizedLabel == null || normalizedLabel.isBlank()) {
-            return Optional.empty();
+            return new ProductMatchResult(Optional.empty(), "none", 0.0);
         }
 
         List<Product> products = productRepository.findAll();
@@ -617,7 +748,7 @@ public class ProductService {
             if (normalizedLabel.equals(normalizedName) || normalizedLabel.equals(normalizedCategory)) {
                 log.info("Product match strategy=normalized_exact label='{}' product='{}'",
                         normalizedLabel, safe(product.getName()));
-                return Optional.of(product);
+                return new ProductMatchResult(Optional.of(product), "exact", 1.0);
             }
         }
 
@@ -643,12 +774,12 @@ public class ProductService {
         if (best != null && bestScore >= FUZZY_MATCH_THRESHOLD) {
             log.info("Product match strategy=fuzzy label='{}' product='{}' score={}",
                     normalizedLabel, safe(best.getName()), String.format("%.3f", bestScore));
-            return Optional.of(best);
+            return new ProductMatchResult(Optional.of(best), "fuzzy", bestScore);
         }
 
         log.info("Product match strategy=none label='{}' bestScore={}",
                 normalizedLabel, String.format("%.3f", bestScore));
-        return Optional.empty();
+        return new ProductMatchResult(Optional.empty(), "none", bestScore);
     }
 
     private double fuzzySimilarity(String input, String candidate) {
@@ -742,6 +873,13 @@ public class ProductService {
     }
 
     private record Co2ScoreResult(int score, String detail) {
+    }
+
+    private record ProductMatchResult(
+            Optional<Product> product,
+            String strategy,
+            double score
+    ) {
     }
 
     private record MetadataResolution(
