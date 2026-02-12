@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.ecolens.ecolens_backend.config.ScoringProperties;
 import com.ecolens.ecolens_backend.dto.RecognitionResponse;
 import com.ecolens.ecolens_backend.model.Product;
 import com.ecolens.ecolens_backend.repository.ProductRepository;
@@ -38,10 +39,12 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final LLMService llmService;
+    private final ScoringProperties scoringProperties;
 
-    public ProductService(ProductRepository productRepository, LLMService llmService) {
+    public ProductService(ProductRepository productRepository, LLMService llmService, ScoringProperties scoringProperties) {
         this.productRepository = productRepository;
         this.llmService = llmService;
+        this.scoringProperties = scoringProperties;
     }
 
     public RecognitionResponse handleRecognition(String detectedLabel, String imageBase64, double confidence) {
@@ -93,6 +96,7 @@ public class ProductService {
         response.setName(product.getName());
         response.setCategory(product.getCategory());
         response.setEcoScore(ratingDecision.ecoScore());
+        response.setCo2Score(ratingDecision.co2Score());
         response.setCo2Gram(ratingDecision.co2Gram());
         response.setRecyclability(ratingDecision.recyclability());
         response.setAltRecommendation(ratingDecision.altRecommendation());
@@ -115,8 +119,8 @@ public class ProductService {
         return new Product(
                 fallbackName,
                 "unknown",
-                50,
-                100.0,
+                scoringProperties.getDefaultCatalogEcoScore(),
+                scoringProperties.getDefaultCarbonImpactGram(),
                 "Unknown",
                 "Consider a reusable alternative",
                 ""
@@ -124,8 +128,13 @@ public class ProductService {
     }
 
     private RatingDecision rateProduct(Product product) {
-        int score = product.getEcoScore() == null ? 50 : product.getEcoScore();
-        double co2 = product.getCarbonImpact() == null ? 100.0 : product.getCarbonImpact();
+        int catalogEcoScore = product.getEcoScore() == null
+                ? scoringProperties.getDefaultCatalogEcoScore()
+                : product.getEcoScore();
+        double co2 = product.getCarbonImpact() == null
+                ? scoringProperties.getDefaultCarbonImpactGram()
+                : product.getCarbonImpact();
+        int co2Score = computeCo2Score(co2);
         String recyclability = safe(product.getRecyclability());
         String category = normalizeLabel(product.getCategory());
         String name = normalizeLabel(product.getName());
@@ -133,65 +142,27 @@ public class ProductService {
 
         boolean singleUse = containsAny(combined, "single use", "single-use", "disposable", "plastic bottle", "plastic bag");
         boolean reusable = containsAny(combined, "reusable", "refillable", "cloth bag", "steel bottle", "led");
+        int featureAdjustment = computeFeatureAdjustment(singleUse, reusable, combined, normalizeLabel(recyclability));
 
-        if (singleUse) {
-            score -= 18;
-        }
-        if (reusable) {
-            score += 18;
-        }
+        double score = scoringProperties.getCatalogWeight() * catalogEcoScore
+                + scoringProperties.getCo2Weight() * co2Score
+                + featureAdjustment;
 
-        if (containsAny(combined, "plastic")) {
-            score -= 10;
-        }
-        if (containsAny(combined, "paper")) {
-            score -= 2;
-        }
-        if (containsAny(combined, "aluminum", "glass")) {
-            score += 5;
-        }
-        if (containsAny(combined, "cloth", "recycled")) {
-            score += 10;
-        }
-
-        String recyclabilityNormalized = normalizeLabel(recyclability);
-        if (containsAny(recyclabilityNormalized, "high")) {
-            score += 10;
-        } else if (containsAny(recyclabilityNormalized, "medium")) {
-            score += 3;
-        } else if (containsAny(recyclabilityNormalized, "low", "unknown")) {
-            score -= 8;
-        } else if (containsAny(recyclabilityNormalized, "organic")) {
-            score += 6;
-        }
-
-        if (co2 <= 20) {
-            score += 10;
-        } else if (co2 <= 50) {
-            score += 7;
-        } else if (co2 <= 100) {
-            score += 2;
-        } else if (co2 > 200) {
-            score -= 10;
-        } else {
-            score -= 4;
-        }
-
-        boolean greenerAlternative = reusable || score >= 90;
+        boolean greenerAlternative = reusable || score >= scoringProperties.getGreenerAlternativeThreshold();
         if (greenerAlternative) {
-            score += 6;
+            score += scoringProperties.getGreenerAlternativeBoost();
         }
-        score = clamp(score, 0, 100);
+        int ecoScore = clamp((int) Math.round(score), scoringProperties.getMinScore(), scoringProperties.getMaxScore());
 
         String recommendation;
         String summary;
         if (greenerAlternative) {
             recommendation = "Great choice. This is already a greener alternative.";
             summary = "This item is a greener alternative with a strong eco profile. Keep using reusable or refillable options.";
-        } else if (score < 40) {
+        } else if (ecoScore < scoringProperties.getHighImpactThreshold()) {
             recommendation = "Consider switching to reusable/refillable alternatives when possible.";
             summary = "This item has a relatively high environmental impact due to material or single-use pattern.";
-        } else if (score < 70) {
+        } else if (ecoScore < scoringProperties.getModerateImpactThreshold()) {
             recommendation = "Try a lower-impact alternative or improve recycling habits.";
             summary = "This item has a moderate impact and can be improved with better reuse or recycling choices.";
         } else {
@@ -199,7 +170,57 @@ public class ProductService {
             summary = "This item has a relatively good eco profile compared with common alternatives.";
         }
 
-        return new RatingDecision(score, co2, recyclability, recommendation, summary, greenerAlternative);
+        return new RatingDecision(ecoScore, co2Score, co2, recyclability, recommendation, summary, greenerAlternative);
+    }
+
+    private int computeFeatureAdjustment(boolean singleUse, boolean reusable, String combined, String recyclabilityNormalized) {
+        ScoringProperties.Adjustments adjustments = scoringProperties.getAdjustments();
+        int adjustment = 0;
+
+        if (singleUse) {
+            adjustment += adjustments.getSingleUsePenalty();
+        }
+        if (reusable) {
+            adjustment += adjustments.getReusableBonus();
+        }
+        if (containsAny(combined, "plastic")) {
+            adjustment += adjustments.getPlasticPenalty();
+        }
+        if (containsAny(combined, "paper")) {
+            adjustment += adjustments.getPaperPenalty();
+        }
+        if (containsAny(combined, "aluminum", "glass")) {
+            adjustment += adjustments.getAluminumGlassBonus();
+        }
+        if (containsAny(combined, "cloth", "recycled")) {
+            adjustment += adjustments.getClothRecycledBonus();
+        }
+        if (containsAny(recyclabilityNormalized, "high")) {
+            adjustment += adjustments.getRecyclabilityHighBonus();
+        } else if (containsAny(recyclabilityNormalized, "medium")) {
+            adjustment += adjustments.getRecyclabilityMediumBonus();
+        } else if (containsAny(recyclabilityNormalized, "low", "unknown")) {
+            adjustment += adjustments.getRecyclabilityLowPenalty();
+        } else if (containsAny(recyclabilityNormalized, "organic")) {
+            adjustment += adjustments.getRecyclabilityOrganicBonus();
+        }
+
+        return adjustment;
+    }
+
+    private int computeCo2Score(double co2Gram) {
+        Double minCo2 = productRepository.findMinCarbonImpact();
+        Double maxCo2 = productRepository.findMaxCarbonImpact();
+        if (minCo2 == null || maxCo2 == null || maxCo2 <= minCo2) {
+            return scoringProperties.getDefaultCo2Score();
+        }
+
+        double normalized = (co2Gram - minCo2) / (maxCo2 - minCo2);
+        normalized = Math.max(0.0, Math.min(1.0, normalized));
+        double inverseNormalized = 1.0 - normalized;
+        int range = scoringProperties.getMaxScore() - scoringProperties.getMinScore();
+        int co2Score = (int) Math.round(scoringProperties.getMinScore() + (inverseNormalized * range));
+        return clamp(co2Score, scoringProperties.getMinScore(), scoringProperties.getMaxScore());
     }
 
     private String normalizeLabel(String label) {
@@ -319,6 +340,7 @@ public class ProductService {
 
     private record RatingDecision(
             int ecoScore,
+            int co2Score,
             double co2Gram,
             String recyclability,
             String altRecommendation,

@@ -5,6 +5,7 @@ public class RecognitionResponse {
     private String name;
     private String category;
     private Integer ecoScore;
+    private Integer co2Score;
     private Double co2Gram;
     private String recyclability;
     private String altRecommendation;
@@ -36,6 +37,14 @@ public class RecognitionResponse {
 
     public void setEcoScore(Integer ecoScore) {
         this.ecoScore = ecoScore;
+    }
+
+    public Integer getCo2Score() {
+        return co2Score;
+    }
+
+    public void setCo2Score(Integer co2Score) {
+        this.co2Score = co2Score;
     }
 
     public Double getCo2Gram() {
