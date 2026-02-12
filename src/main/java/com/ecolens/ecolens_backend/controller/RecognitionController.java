@@ -23,7 +23,11 @@ public class RecognitionController {
     @PostMapping("/recognize")
     public ResponseEntity<RecognitionResponse> recognize(@RequestBody RecognitionRequest request) {
         double confidence = request.getConfidence() == null ? 0.0 : request.getConfidence();
-        RecognitionResponse response = productService.handleRecognition(request.getDetectedLabel(), confidence);
+        RecognitionResponse response = productService.handleRecognition(
+                request.getDetectedLabel(),
+                request.getImageBase64(),
+                confidence
+        );
         return ResponseEntity.ok(response);
     }
 }
