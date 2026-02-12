@@ -5,6 +5,8 @@ public class HistoryStatsResponse {
     private Double avgScore;
     private Integer highImpactCount;
     private Integer greenerCount;
+    private Integer highImpactThreshold;
+    private Integer greenerThreshold;
 
     public HistoryStatsResponse() {
     }
@@ -31,5 +33,21 @@ public class HistoryStatsResponse {
 
     public void setGreenerCount(Integer greenerCount) {
         this.greenerCount = greenerCount;
+    }
+
+    public Integer getHighImpactThreshold() {
+        return highImpactThreshold;
+    }
+
+    public void setHighImpactThreshold(Integer highImpactThreshold) {
+        this.highImpactThreshold = highImpactThreshold;
+    }
+
+    public Integer getGreenerThreshold() {
+        return greenerThreshold;
+    }
+
+    public void setGreenerThreshold(Integer greenerThreshold) {
+        this.greenerThreshold = greenerThreshold;
     }
 }

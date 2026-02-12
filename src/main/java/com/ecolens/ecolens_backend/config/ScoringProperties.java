@@ -18,6 +18,7 @@ public class ScoringProperties {
     private int greenerAlternativeBoost = 6;
     private int greenerAlternativeThreshold = 90;
     private int highImpactThreshold = 40;
+    private int historyGreenerThreshold = 85;
     private int moderateImpactThreshold = 70;
     private Co2Normalization co2Normalization = new Co2Normalization();
     private FeatureThresholds featureThresholds = new FeatureThresholds();
@@ -117,6 +118,14 @@ public class ScoringProperties {
 
     public void setModerateImpactThreshold(int moderateImpactThreshold) {
         this.moderateImpactThreshold = moderateImpactThreshold;
+    }
+
+    public int getHistoryGreenerThreshold() {
+        return historyGreenerThreshold;
+    }
+
+    public void setHistoryGreenerThreshold(int historyGreenerThreshold) {
+        this.historyGreenerThreshold = historyGreenerThreshold;
     }
 
     public Adjustments getAdjustments() {

@@ -1,10 +1,13 @@
 package com.ecolens.ecolens_backend.service;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.ecolens.ecolens_backend.config.ScoringProperties;
 import com.ecolens.ecolens_backend.dto.HistoryEntryRequest;
 import com.ecolens.ecolens_backend.dto.HistoryEntryResponse;
 import com.ecolens.ecolens_backend.dto.HistoryStatsResponse;
@@ -15,9 +18,11 @@ import com.ecolens.ecolens_backend.repository.ScanHistoryRepository;
 public class HistoryService {
 
     private final ScanHistoryRepository scanHistoryRepository;
+    private final ScoringProperties scoringProperties;
 
-    public HistoryService(ScanHistoryRepository scanHistoryRepository) {
+    public HistoryService(ScanHistoryRepository scanHistoryRepository, ScoringProperties scoringProperties) {
         this.scanHistoryRepository = scanHistoryRepository;
+        this.scoringProperties = scoringProperties;
     }
 
     public HistoryEntryResponse save(HistoryEntryRequest request, String requestedUserId) {
@@ -28,7 +33,7 @@ public class HistoryService {
                 safe(request.getCategory(), "unknown"),
                 request.getEcoScore() == null ? 0 : request.getEcoScore(),
                 request.getConfidence() == null ? 0.0 : request.getConfidence(),
-                LocalDateTime.now()
+                LocalDateTime.now(Clock.systemUTC())
         );
         ScanHistoryEntry saved = scanHistoryRepository.save(entry);
         return toResponse(saved);
@@ -36,8 +41,9 @@ public class HistoryService {
 
     public List<HistoryEntryResponse> list(boolean highImpactOnly, String requestedUserId) {
         String userId = resolveUserId(null, requestedUserId);
+        int highImpactThreshold = scoringProperties.getHighImpactThreshold();
         List<ScanHistoryEntry> entries = highImpactOnly
-                ? scanHistoryRepository.findByUserIdAndEcoScoreLessThanOrderByScannedAtDesc(userId, 40)
+                ? scanHistoryRepository.findByUserIdAndEcoScoreLessThanOrderByScannedAtDesc(userId, highImpactThreshold)
                 : scanHistoryRepository.findAllByUserIdOrderByScannedAtDesc(userId);
 
         return entries.stream().map(this::toResponse).toList();
@@ -47,6 +53,10 @@ public class HistoryService {
         String userId = resolveUserId(null, requestedUserId);
         List<ScanHistoryEntry> entries = scanHistoryRepository.findAllByUserId(userId);
         HistoryStatsResponse response = new HistoryStatsResponse();
+        int highImpactThreshold = scoringProperties.getHighImpactThreshold();
+        int greenerThreshold = scoringProperties.getHistoryGreenerThreshold();
+        response.setHighImpactThreshold(highImpactThreshold);
+        response.setGreenerThreshold(greenerThreshold);
 
         if (entries.isEmpty()) {
             response.setAvgScore(null);
@@ -63,11 +73,11 @@ public class HistoryService {
                 .orElse(0.0);
 
         int highImpact = (int) entries.stream()
-                .filter(e -> e.getEcoScore() != null && e.getEcoScore() < 40)
+                .filter(e -> e.getEcoScore() != null && e.getEcoScore() < highImpactThreshold)
                 .count();
 
         int greener = (int) entries.stream()
-                .filter(e -> e.getEcoScore() != null && e.getEcoScore() >= 85)
+                .filter(e -> e.getEcoScore() != null && e.getEcoScore() >= greenerThreshold)
                 .count();
 
         response.setAvgScore(avg);
@@ -84,7 +94,7 @@ public class HistoryService {
         response.setCategory(entry.getCategory());
         response.setEcoScore(entry.getEcoScore());
         response.setConfidence(entry.getConfidence());
-        response.setTimestamp(entry.getScannedAt().toString());
+        response.setTimestamp(entry.getScannedAt().atOffset(ZoneOffset.UTC).toInstant().toString());
         return response;
     }
 
