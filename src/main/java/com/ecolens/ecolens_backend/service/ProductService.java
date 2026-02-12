@@ -21,8 +21,14 @@ public class ProductService {
         this.llmService = llmService;
     }
 
-    public RecognitionResponse handleRecognition(String detectedLabel, double confidence) {
-        String normalizedLabel = normalizeLabel(detectedLabel);
+    public RecognitionResponse handleRecognition(String detectedLabel, String imageBase64, double confidence) {
+        String labelForLookup = normalizeLabel(detectedLabel);
+        if (labelForLookup.isBlank() && imageBase64 != null && !imageBase64.isBlank()) {
+            labelForLookup = normalizeLabel(llmService.detectLabelFromImage(imageBase64));
+            log.info("Gemini image detected label='{}'", labelForLookup);
+        }
+
+        String normalizedLabel = labelForLookup;
         String generationStatus = "skipped_cached_explanation";
 
         Product product = productRepository.findByNameIgnoreCase(normalizedLabel)
