@@ -22,10 +22,23 @@ public class ProductService {
     }
 
     public RecognitionResponse handleRecognition(String detectedLabel, String imageBase64, double confidence) {
+        log.info("Model routing for recognition request: textModel={}, visionModel={}",
+                llmService.getConfiguredTextModel(), llmService.getConfiguredVisionModel());
+
         String labelForLookup = normalizeLabel(detectedLabel);
-        if (labelForLookup.isBlank() && imageBase64 != null && !imageBase64.isBlank()) {
+        boolean hasImage = imageBase64 != null && !imageBase64.isBlank();
+        String inputSource;
+        if (!labelForLookup.isBlank()) {
+            inputSource = "text";
+            log.info("Recognition input source=text providedLabel='{}'", labelForLookup);
+        } else if (hasImage) {
+            inputSource = "image";
+            log.info("Recognition input source=image autoDetectRequested=true");
             labelForLookup = normalizeLabel(llmService.detectLabelFromImage(imageBase64));
             log.info("Gemini image detected label='{}'", labelForLookup);
+        } else {
+            inputSource = "none";
+            log.warn("Recognition input source=none: no text label and no image payload.");
         }
 
         String normalizedLabel = labelForLookup;
@@ -62,8 +75,8 @@ public class ProductService {
         response.setExplanation(product.getExplanation() == null ? "" : product.getExplanation());
         response.setConfidence(confidence);
 
-        log.info("ProductService handled recognition: label='{}', product='{}', llm={}",
-                normalizedLabel, safe(product.getName()), generationStatus);
+        log.info("ProductService handled recognition: inputSource={}, label='{}', product='{}', llm={}",
+                inputSource, normalizedLabel, safe(product.getName()), generationStatus);
 
         return response;
     }

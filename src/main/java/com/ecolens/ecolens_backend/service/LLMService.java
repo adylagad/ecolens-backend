@@ -49,7 +49,7 @@ public class LLMService {
 
         try {
             String model = resolveModel();
-            log.info("Gemini explanation generation enabled. Key source={}, model={}.",
+            log.info("Gemini text generation started: keySource={}, textModel={}.",
                     apiKeyResolution.source(), model);
 
             HttpRequest request = HttpRequest.newBuilder()
@@ -98,6 +98,7 @@ public class LLMService {
 
         try {
             String model = resolveVisionModel();
+            log.info("Gemini image detection started: visionModel={}", model);
             String sanitizedImage = sanitizeImageBase64(imageBase64);
             if (sanitizedImage.isBlank()) {
                 return "";
@@ -122,11 +123,22 @@ public class LLMService {
             if (content == null || content.isBlank()) {
                 return "";
             }
-            return content.trim().toLowerCase();
+            String label = content.trim().toLowerCase();
+            log.info("Gemini image detection succeeded: model={}, mimeType={}, label='{}'",
+                    model, mimeType, label);
+            return label;
         } catch (Exception ex) {
             log.warn("Gemini image detection failed: {}: {}", ex.getClass().getSimpleName(), ex.getMessage());
             return "";
         }
+    }
+
+    public String getConfiguredTextModel() {
+        return resolveModel();
+    }
+
+    public String getConfiguredVisionModel() {
+        return resolveVisionModel();
     }
 
     public boolean isFallbackExplanation(String explanation) {
