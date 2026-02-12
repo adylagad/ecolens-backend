@@ -278,12 +278,17 @@ public class LLMService {
 
     private String buildPrompt(Product product) {
         return String.format(
-                "Product name: %s%nCategory: %s%nEco score: %s%nCO2 grams: %s%nRecyclability: %s%nAlternative: %s",
+                "Product name: %s%nCategory: %s%nEco score: %s%nCO2 grams: %s%nRecyclability: %s%nMaterial: %s%nIs reusable: %s%nIs single-use: %s%nRecycled content %%: %s%nLifecycle type: %s%nAlternative: %s",
                 safe(product.getName()),
                 safe(product.getCategory()),
                 safe(product.getEcoScore()),
                 safe(product.getCarbonImpact()),
                 safe(product.getRecyclability()),
+                safe(product.getMaterial()),
+                safe(product.getReusable()),
+                safe(product.getSingleUse()),
+                safe(product.getRecycledContentPercent()),
+                safe(product.getLifecycleType()),
                 safe(product.getAlternativeRecommendation())
         );
     }

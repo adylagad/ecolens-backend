@@ -19,6 +19,8 @@ public class ScoringProperties {
     private int greenerAlternativeThreshold = 90;
     private int highImpactThreshold = 40;
     private int moderateImpactThreshold = 70;
+    private Co2Normalization co2Normalization = new Co2Normalization();
+    private FeatureThresholds featureThresholds = new FeatureThresholds();
     private Adjustments adjustments = new Adjustments();
 
     public int getMinScore() {
@@ -125,13 +127,76 @@ public class ScoringProperties {
         this.adjustments = adjustments;
     }
 
+    public Co2Normalization getCo2Normalization() {
+        return co2Normalization;
+    }
+
+    public void setCo2Normalization(Co2Normalization co2Normalization) {
+        this.co2Normalization = co2Normalization;
+    }
+
+    public FeatureThresholds getFeatureThresholds() {
+        return featureThresholds;
+    }
+
+    public void setFeatureThresholds(FeatureThresholds featureThresholds) {
+        this.featureThresholds = featureThresholds;
+    }
+
+    public static class Co2Normalization {
+        private double lowerPercentile = 0.05;
+        private double upperPercentile = 0.95;
+
+        public double getLowerPercentile() {
+            return lowerPercentile;
+        }
+
+        public void setLowerPercentile(double lowerPercentile) {
+            this.lowerPercentile = lowerPercentile;
+        }
+
+        public double getUpperPercentile() {
+            return upperPercentile;
+        }
+
+        public void setUpperPercentile(double upperPercentile) {
+            this.upperPercentile = upperPercentile;
+        }
+    }
+
+    public static class FeatureThresholds {
+        private int recycledContentMediumPercent = 30;
+        private int recycledContentHighPercent = 70;
+
+        public int getRecycledContentMediumPercent() {
+            return recycledContentMediumPercent;
+        }
+
+        public void setRecycledContentMediumPercent(int recycledContentMediumPercent) {
+            this.recycledContentMediumPercent = recycledContentMediumPercent;
+        }
+
+        public int getRecycledContentHighPercent() {
+            return recycledContentHighPercent;
+        }
+
+        public void setRecycledContentHighPercent(int recycledContentHighPercent) {
+            this.recycledContentHighPercent = recycledContentHighPercent;
+        }
+    }
+
     public static class Adjustments {
         private int singleUsePenalty = -18;
         private int reusableBonus = 18;
+        private int refillableLifecycleBonus = 8;
+        private int longLifeLifecycleBonus = 6;
+        private int biodegradableLifecycleBonus = 5;
         private int plasticPenalty = -10;
         private int paperPenalty = -2;
         private int aluminumGlassBonus = 5;
         private int clothRecycledBonus = 10;
+        private int recycledContentMediumBonus = 4;
+        private int recycledContentHighBonus = 8;
         private int recyclabilityHighBonus = 10;
         private int recyclabilityMediumBonus = 3;
         private int recyclabilityLowPenalty = -8;
@@ -151,6 +216,30 @@ public class ScoringProperties {
 
         public void setReusableBonus(int reusableBonus) {
             this.reusableBonus = reusableBonus;
+        }
+
+        public int getRefillableLifecycleBonus() {
+            return refillableLifecycleBonus;
+        }
+
+        public void setRefillableLifecycleBonus(int refillableLifecycleBonus) {
+            this.refillableLifecycleBonus = refillableLifecycleBonus;
+        }
+
+        public int getLongLifeLifecycleBonus() {
+            return longLifeLifecycleBonus;
+        }
+
+        public void setLongLifeLifecycleBonus(int longLifeLifecycleBonus) {
+            this.longLifeLifecycleBonus = longLifeLifecycleBonus;
+        }
+
+        public int getBiodegradableLifecycleBonus() {
+            return biodegradableLifecycleBonus;
+        }
+
+        public void setBiodegradableLifecycleBonus(int biodegradableLifecycleBonus) {
+            this.biodegradableLifecycleBonus = biodegradableLifecycleBonus;
         }
 
         public int getPlasticPenalty() {
@@ -183,6 +272,22 @@ public class ScoringProperties {
 
         public void setClothRecycledBonus(int clothRecycledBonus) {
             this.clothRecycledBonus = clothRecycledBonus;
+        }
+
+        public int getRecycledContentMediumBonus() {
+            return recycledContentMediumBonus;
+        }
+
+        public void setRecycledContentMediumBonus(int recycledContentMediumBonus) {
+            this.recycledContentMediumBonus = recycledContentMediumBonus;
+        }
+
+        public int getRecycledContentHighBonus() {
+            return recycledContentHighBonus;
+        }
+
+        public void setRecycledContentHighBonus(int recycledContentHighBonus) {
+            this.recycledContentHighBonus = recycledContentHighBonus;
         }
 
         public int getRecyclabilityHighBonus() {

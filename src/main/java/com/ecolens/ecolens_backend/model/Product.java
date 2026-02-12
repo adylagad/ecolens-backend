@@ -36,11 +36,27 @@ public class Product {
     @Column(nullable = true, length = 2000)
     private String explanation;
 
+    @Column(name = "material")
+    private String material;
+
+    @Column(name = "is_reusable")
+    private Boolean reusable;
+
+    @Column(name = "is_single_use")
+    private Boolean singleUse;
+
+    @Column(name = "recycled_content_percent")
+    private Integer recycledContentPercent;
+
+    @Column(name = "lifecycle_type")
+    private String lifecycleType;
+
     public Product() {
     }
 
     public Product(String name, String category, Integer ecoScore, Double carbonImpact, String recyclability,
-                   String alternativeRecommendation, String explanation) {
+                   String alternativeRecommendation, String explanation, String material, Boolean reusable,
+                   Boolean singleUse, Integer recycledContentPercent, String lifecycleType) {
         this.name = name;
         this.category = category;
         this.ecoScore = ecoScore;
@@ -48,6 +64,11 @@ public class Product {
         this.recyclability = recyclability;
         this.alternativeRecommendation = alternativeRecommendation;
         this.explanation = explanation;
+        this.material = material;
+        this.reusable = reusable;
+        this.singleUse = singleUse;
+        this.recycledContentPercent = recycledContentPercent;
+        this.lifecycleType = lifecycleType;
     }
 
     public Long getId() {
@@ -108,5 +129,45 @@ public class Product {
 
     public void setExplanation(String explanation) {
         this.explanation = explanation;
+    }
+
+    public String getMaterial() {
+        return material;
+    }
+
+    public void setMaterial(String material) {
+        this.material = material;
+    }
+
+    public Boolean getReusable() {
+        return reusable;
+    }
+
+    public void setReusable(Boolean reusable) {
+        this.reusable = reusable;
+    }
+
+    public Boolean getSingleUse() {
+        return singleUse;
+    }
+
+    public void setSingleUse(Boolean singleUse) {
+        this.singleUse = singleUse;
+    }
+
+    public Integer getRecycledContentPercent() {
+        return recycledContentPercent;
+    }
+
+    public void setRecycledContentPercent(Integer recycledContentPercent) {
+        this.recycledContentPercent = recycledContentPercent;
+    }
+
+    public String getLifecycleType() {
+        return lifecycleType;
+    }
+
+    public void setLifecycleType(String lifecycleType) {
+        this.lifecycleType = lifecycleType;
     }
 }
