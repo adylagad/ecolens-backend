@@ -62,7 +62,10 @@ public class ProductService {
             new MetadataInferenceRule("fast_fashion", List.of("fast fashion", "polyester shirt"),
                     "polyester", Boolean.FALSE, Boolean.FALSE, 0, "fast_fashion", "Low", 0.8),
             new MetadataInferenceRule("slow_fashion", List.of("second hand", "denim jacket"),
-                    "denim", Boolean.TRUE, Boolean.FALSE, 0, "long_life", "Medium", 0.88)
+                    "denim", Boolean.TRUE, Boolean.FALSE, 0, "long_life", "Medium", 0.88),
+            new MetadataInferenceRule("nature_positive_living_item",
+                    List.of("tree", "sapling", "seedling", "houseplant", "potted plant", "flower", "shrub", "plant"),
+                    "organic", Boolean.FALSE, Boolean.FALSE, 0, "living_natural", "Organic", 0.96)
     );
 
     private final ProductRepository productRepository;
@@ -119,20 +122,26 @@ public class ProductService {
 
         RatingDecision ratingDecision = rateProduct(product, metadataResolution);
 
+        boolean shouldAttemptLlmExplanation =
+                "exact".equals(productMatchResult.strategy()) && !metadataResolution.inferred();
         if (product.getExplanation() == null || product.getExplanation().isBlank()) {
-            generationStatus = "attempted";
-            try {
-                String generatedExplanation = llmService.generateExplanation(product);
-                if (!llmService.isFallbackExplanation(generatedExplanation)) {
-                    product.setExplanation(generatedExplanation);
-                    product = productRepository.save(product);
-                    generationStatus = "attempted_saved";
-                } else {
-                    generationStatus = "attempted_fallback";
+            if (shouldAttemptLlmExplanation) {
+                generationStatus = "attempted";
+                try {
+                    String generatedExplanation = llmService.generateExplanation(product);
+                    if (!llmService.isFallbackExplanation(generatedExplanation)) {
+                        product.setExplanation(generatedExplanation);
+                        product = productRepository.save(product);
+                        generationStatus = "attempted_saved";
+                    } else {
+                        generationStatus = "attempted_fallback";
+                    }
+                } catch (Exception ex) {
+                    generationStatus = "attempted_failed";
+                    log.warn("Explanation generation failed for product={}: {}", safe(product.getName()), ex.getMessage());
                 }
-            } catch (Exception ex) {
-                generationStatus = "attempted_failed";
-                log.warn("Explanation generation failed for product={}: {}", safe(product.getName()), ex.getMessage());
+            } else {
+                generationStatus = "skipped_rule_based_explanation";
             }
         }
 
@@ -184,19 +193,38 @@ public class ProductService {
 
     private Product createDefaultProduct(String detectedLabel) {
         String fallbackName = detectedLabel.isBlank() ? "Unknown Product" : toDisplayLabel(detectedLabel);
+        boolean naturePositiveLabel = isNaturePositiveLabel(detectedLabel);
+        int fallbackEcoScore = naturePositiveLabel
+                ? clamp(
+                Math.max(scoringProperties.getGreenerAlternativeThreshold(), scoringProperties.getModerateImpactThreshold()),
+                scoringProperties.getMinScore(),
+                scoringProperties.getMaxScore())
+                : scoringProperties.getDefaultCatalogEcoScore();
+        double fallbackCo2 = naturePositiveLabel
+                ? Math.max(1.0, Math.min(12.0, scoringProperties.getDefaultCarbonImpactGram() * 0.05))
+                : scoringProperties.getDefaultCarbonImpactGram();
+        String fallbackRecyclability = naturePositiveLabel ? "Organic" : "Unknown";
+        String fallbackAlternative = naturePositiveLabel
+                ? "Already eco-positive. Keep protecting and maintaining this natural item."
+                : "Consider a reusable alternative";
+        String fallbackMaterial = naturePositiveLabel ? "organic" : "";
+        Boolean fallbackReusable = naturePositiveLabel ? Boolean.FALSE : null;
+        Boolean fallbackSingleUse = naturePositiveLabel ? Boolean.FALSE : null;
+        Integer fallbackRecycledContent = naturePositiveLabel ? 0 : null;
+        String fallbackLifecycle = naturePositiveLabel ? "living_natural" : "";
         return new Product(
                 fallbackName,
                 "unknown",
-                scoringProperties.getDefaultCatalogEcoScore(),
-                scoringProperties.getDefaultCarbonImpactGram(),
-                "Unknown",
-                "Consider a reusable alternative",
+                fallbackEcoScore,
+                fallbackCo2,
+                fallbackRecyclability,
+                fallbackAlternative,
                 "",
-                "",
-                null,
-                null,
-                null,
-                ""
+                fallbackMaterial,
+                fallbackReusable,
+                fallbackSingleUse,
+                fallbackRecycledContent,
+                fallbackLifecycle
         );
     }
 
@@ -242,22 +270,54 @@ public class ProductService {
         boolean inferredRecycledContent = metadataResolution.inferredFields().contains("recycledContentPercent");
         boolean inferredLifecycle = metadataResolution.inferredFields().contains("lifecycleType");
         boolean inferredRecyclability = metadataResolution.inferredFields().contains("recyclability");
+        boolean naturePositiveLabel = isNaturePositiveLabel(normalizedLabel);
+
+        int learnedEcoScore = naturePositiveLabel
+                ? clamp(
+                Math.max(scoringProperties.getGreenerAlternativeThreshold(), scoringProperties.getModerateImpactThreshold()),
+                scoringProperties.getMinScore(),
+                scoringProperties.getMaxScore())
+                : scoringProperties.getDefaultCatalogEcoScore();
+        double learnedCo2 = naturePositiveLabel
+                ? Math.max(1.0, Math.min(12.0, scoringProperties.getDefaultCarbonImpactGram() * 0.05))
+                : scoringProperties.getDefaultCarbonImpactGram();
+        String learnedRecyclability = inferredRecyclability
+                ? metadataResolution.recyclability()
+                : naturePositiveLabel ? "Organic" : "Unknown";
+        String learnedAlternative = naturePositiveLabel
+                ? "Already eco-positive. Keep protecting and maintaining this natural item."
+                : Boolean.TRUE.equals(inferredReusable ? metadataResolution.reusable() : null)
+                ? "Great choice. Keep using reusable options."
+                : "Consider switching to reusable/refillable alternatives.";
+        String learnedMaterial = inferredMaterial
+                ? metadataResolution.material()
+                : naturePositiveLabel ? "organic" : "";
+        Boolean learnedReusable = inferredReusable
+                ? metadataResolution.reusable()
+                : naturePositiveLabel ? Boolean.FALSE : null;
+        Boolean learnedSingleUse = inferredSingleUse
+                ? metadataResolution.singleUse()
+                : naturePositiveLabel ? Boolean.FALSE : null;
+        Integer learnedRecycledContent = inferredRecycledContent
+                ? metadataResolution.recycledContentPercent()
+                : 0;
+        String learnedLifecycle = inferredLifecycle
+                ? metadataResolution.lifecycleType()
+                : naturePositiveLabel ? "living_natural" : "";
 
         Product learned = new Product(
                 displayName,
                 category,
-                scoringProperties.getDefaultCatalogEcoScore(),
-                scoringProperties.getDefaultCarbonImpactGram(),
-                inferredRecyclability ? metadataResolution.recyclability() : "Unknown",
-                Boolean.TRUE.equals(inferredReusable ? metadataResolution.reusable() : null)
-                        ? "Great choice. Keep using reusable options."
-                        : "Consider switching to reusable/refillable alternatives.",
+                learnedEcoScore,
+                learnedCo2,
+                learnedRecyclability,
+                learnedAlternative,
                 "",
-                inferredMaterial ? metadataResolution.material() : "",
-                inferredReusable ? metadataResolution.reusable() : null,
-                inferredSingleUse ? metadataResolution.singleUse() : null,
-                inferredRecycledContent ? metadataResolution.recycledContentPercent() : 0,
-                inferredLifecycle ? metadataResolution.lifecycleType() : ""
+                learnedMaterial,
+                learnedReusable,
+                learnedSingleUse,
+                learnedRecycledContent,
+                learnedLifecycle
         );
         Product saved = productRepository.save(learned);
         log.info("Catalog auto-learned new product: label='{}', savedName='{}', category='{}'",
@@ -380,6 +440,7 @@ public class ProductService {
         );
         int featureAdjustment = featureAdjustmentResult.total();
         List<ScoreFactor> scoreFactors = new ArrayList<>();
+        boolean naturePositiveItem = isNaturePositiveItem(combined, material, lifecycleType);
 
         scoreFactors.add(new ScoreFactor(
                 "catalog_weight",
@@ -404,13 +465,22 @@ public class ProductService {
                             + ", confidenceMultiplier=" + metadataResolution.confidenceMultiplier()
             ));
         }
+        if (naturePositiveItem) {
+            scoreFactors.add(new ScoreFactor(
+                    "nature_positive_context",
+                    "Nature-positive context detected",
+                    0.0,
+                    "label/material/lifecycle indicates a living natural item"
+            ));
+        }
         scoreFactors.addAll(featureAdjustmentResult.factors());
 
         double score = catalogContribution
                 + co2Contribution
                 + featureAdjustment;
 
-        boolean greenerAlternative = reusable || score >= scoringProperties.getGreenerAlternativeThreshold();
+        boolean greenerAlternative =
+                reusable || score >= scoringProperties.getGreenerAlternativeThreshold() || naturePositiveItem;
         int greenerBoost = 0;
         if (greenerAlternative) {
             greenerBoost = scoringProperties.getGreenerAlternativeBoost();
@@ -419,14 +489,20 @@ public class ProductService {
                     "greener_boost",
                     "Greener alternative boost",
                     (double) greenerBoost,
-                    "threshold=" + scoringProperties.getGreenerAlternativeThreshold()
+                    naturePositiveItem
+                            ? "reason=nature_positive_context"
+                            : "threshold=" + scoringProperties.getGreenerAlternativeThreshold()
             ));
         }
         int ecoScore = clamp((int) Math.round(score), scoringProperties.getMinScore(), scoringProperties.getMaxScore());
 
         String recommendation;
         String summary;
-        if (greenerAlternative) {
+        if (naturePositiveItem) {
+            recommendation = "Already eco-positive. Protect and maintain this natural item.";
+            summary = "This appears to be a natural living item with inherently positive environmental impact. "
+                    + "No greener replacement is needed.";
+        } else if (greenerAlternative) {
             recommendation = "Great choice. This is already a greener alternative.";
             summary = "This item is a greener alternative with a strong eco profile. Keep using reusable or refillable options.";
         } else if (ecoScore < scoringProperties.getHighImpactThreshold()) {
@@ -499,6 +575,11 @@ public class ProductService {
             adjustment += adjustments.getBiodegradableLifecycleBonus();
             factors.add(new ScoreFactor("biodegradable_lifecycle_bonus", "Biodegradable lifecycle bonus",
                     (double) adjustments.getBiodegradableLifecycleBonus(), "lifecycleType=biodegradable/compostable"));
+        }
+        if (containsAny(lifecycleType, "living natural", "living_natural", "nature positive", "natural living")) {
+            adjustment += adjustments.getNaturePositiveBonus();
+            factors.add(new ScoreFactor("nature_positive_bonus", "Natural item bonus",
+                    (double) adjustments.getNaturePositiveBonus(), "lifecycleType=living_natural"));
         }
         if (containsAny(materialContext, "plastic", "polystyrene", "polyester")) {
             adjustment += adjustments.getPlasticPenalty();
@@ -826,6 +907,27 @@ public class ProductService {
             }
         }
         return false;
+    }
+
+    private boolean isNaturePositiveLabel(String value) {
+        String normalized = normalizeLabel(value);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        if (containsAny(normalized,
+                "plastic", "bottle", "cup", "bag", "straw", "container", "packaging", "disposable", "artificial")) {
+            return false;
+        }
+        return containsAny(normalized, "tree", "sapling", "seedling", "houseplant", "potted plant", "flower", "shrub", "plant");
+    }
+
+    private boolean isNaturePositiveItem(String combined, String material, String lifecycleType) {
+        if (containsAny(lifecycleType, "living natural", "living_natural", "nature positive", "natural living")) {
+            return true;
+        }
+        return isNaturePositiveLabel(combined)
+                || (containsAny(material, "organic", "plant", "leaf", "tree")
+                && containsAny(combined, "tree", "plant", "sapling", "flower", "shrub"));
     }
 
     private int clamp(int value, int min, int max) {

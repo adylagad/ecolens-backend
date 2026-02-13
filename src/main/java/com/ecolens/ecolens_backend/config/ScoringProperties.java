@@ -200,6 +200,7 @@ public class ScoringProperties {
         private int refillableLifecycleBonus = 8;
         private int longLifeLifecycleBonus = 6;
         private int biodegradableLifecycleBonus = 5;
+        private int naturePositiveBonus = 24;
         private int plasticPenalty = -10;
         private int paperPenalty = -2;
         private int aluminumGlassBonus = 5;
@@ -249,6 +250,14 @@ public class ScoringProperties {
 
         public void setBiodegradableLifecycleBonus(int biodegradableLifecycleBonus) {
             this.biodegradableLifecycleBonus = biodegradableLifecycleBonus;
+        }
+
+        public int getNaturePositiveBonus() {
+            return naturePositiveBonus;
+        }
+
+        public void setNaturePositiveBonus(int naturePositiveBonus) {
+            this.naturePositiveBonus = naturePositiveBonus;
         }
 
         public int getPlasticPenalty() {
