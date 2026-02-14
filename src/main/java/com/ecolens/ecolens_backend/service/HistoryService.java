@@ -26,9 +26,8 @@ public class HistoryService {
     }
 
     public HistoryEntryResponse save(HistoryEntryRequest request, String requestedUserId) {
-        String userId = resolveUserId(request.getUserId(), requestedUserId);
         ScanHistoryEntry entry = new ScanHistoryEntry(
-                userId,
+                requestedUserId,
                 safe(request.getItem(), "Unknown item"),
                 safe(request.getCategory(), "unknown"),
                 request.getEcoScore() == null ? 0 : request.getEcoScore(),
@@ -40,18 +39,16 @@ public class HistoryService {
     }
 
     public List<HistoryEntryResponse> list(boolean highImpactOnly, String requestedUserId) {
-        String userId = resolveUserId(null, requestedUserId);
         int highImpactThreshold = scoringProperties.getHighImpactThreshold();
         List<ScanHistoryEntry> entries = highImpactOnly
-                ? scanHistoryRepository.findByUserIdAndEcoScoreLessThanOrderByScannedAtDesc(userId, highImpactThreshold)
-                : scanHistoryRepository.findAllByUserIdOrderByScannedAtDesc(userId);
+                ? scanHistoryRepository.findByUserIdAndEcoScoreLessThanOrderByScannedAtDesc(requestedUserId, highImpactThreshold)
+                : scanHistoryRepository.findAllByUserIdOrderByScannedAtDesc(requestedUserId);
 
         return entries.stream().map(this::toResponse).toList();
     }
 
     public HistoryStatsResponse stats(String requestedUserId) {
-        String userId = resolveUserId(null, requestedUserId);
-        List<ScanHistoryEntry> entries = scanHistoryRepository.findAllByUserId(userId);
+        List<ScanHistoryEntry> entries = scanHistoryRepository.findAllByUserId(requestedUserId);
         HistoryStatsResponse response = new HistoryStatsResponse();
         int highImpactThreshold = scoringProperties.getHighImpactThreshold();
         int greenerThreshold = scoringProperties.getHistoryGreenerThreshold();
@@ -96,16 +93,6 @@ public class HistoryService {
         response.setConfidence(entry.getConfidence());
         response.setTimestamp(entry.getScannedAt().atOffset(ZoneOffset.UTC).toInstant().toString());
         return response;
-    }
-
-    private String resolveUserId(String requestBodyUserId, String queryUserId) {
-        if (requestBodyUserId != null && !requestBodyUserId.isBlank()) {
-            return requestBodyUserId.trim();
-        }
-        if (queryUserId != null && !queryUserId.isBlank()) {
-            return queryUserId.trim();
-        }
-        return "anonymous";
     }
 
     private String safe(String value, String fallback) {
