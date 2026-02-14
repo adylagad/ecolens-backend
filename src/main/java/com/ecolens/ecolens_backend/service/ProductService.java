@@ -69,17 +69,20 @@ public class ProductService {
     );
 
     private final ProductRepository productRepository;
+    private final MongoAtlasRuntimeStore mongoAtlasRuntimeStore;
     private final LLMService llmService;
     private final ScoringProperties scoringProperties;
     private final CatalogProperties catalogProperties;
 
     public ProductService(
             ProductRepository productRepository,
+            MongoAtlasRuntimeStore mongoAtlasRuntimeStore,
             LLMService llmService,
             ScoringProperties scoringProperties,
             CatalogProperties catalogProperties
     ) {
         this.productRepository = productRepository;
+        this.mongoAtlasRuntimeStore = mongoAtlasRuntimeStore;
         this.llmService = llmService;
         this.scoringProperties = scoringProperties;
         this.catalogProperties = catalogProperties;
@@ -131,7 +134,7 @@ public class ProductService {
                     String generatedExplanation = llmService.generateExplanation(product);
                     if (!llmService.isFallbackExplanation(generatedExplanation)) {
                         product.setExplanation(generatedExplanation);
-                        product = productRepository.save(product);
+                        product = saveProduct(product);
                         generationStatus = "attempted_saved";
                     } else {
                         generationStatus = "attempted_fallback";
@@ -256,9 +259,9 @@ public class ProductService {
         String category = normalizedLabel;
         String displayName = toDisplayLabel(normalizedLabel);
 
-        Optional<Product> existing = productRepository.findByNameIgnoreCase(displayName);
+        Optional<Product> existing = findByNameIgnoreCase(displayName);
         if (existing.isEmpty()) {
-            existing = productRepository.findFirstByCategoryIgnoreCase(category);
+            existing = findFirstByCategoryIgnoreCase(category);
         }
         if (existing.isPresent()) {
             return existing.get();
@@ -319,7 +322,7 @@ public class ProductService {
                 learnedRecycledContent,
                 learnedLifecycle
         );
-        Product saved = productRepository.save(learned);
+        Product saved = saveProduct(learned);
         log.info("Catalog auto-learned new product: label='{}', savedName='{}', category='{}'",
                 normalizedLabel, saved.getName(), saved.getCategory());
         return saved;
@@ -634,7 +637,7 @@ public class ProductService {
     }
 
     private Co2ScoreResult computeCo2Score(double co2Gram) {
-        List<Double> distribution = productRepository.findAllCarbonImpactsOrdered();
+        List<Double> distribution = findAllCarbonImpactsOrdered();
         if (distribution == null || distribution.isEmpty()) {
             return new Co2ScoreResult(scoringProperties.getDefaultCo2Score(), "method=default;reason=missing_distribution");
         }
@@ -822,7 +825,7 @@ public class ProductService {
             return new ProductMatchResult(Optional.empty(), "none", 0.0);
         }
 
-        List<Product> products = productRepository.findAll();
+        List<Product> products = findAllProducts();
         for (Product product : products) {
             String normalizedName = normalizeLabel(product.getName());
             String normalizedCategory = normalizeLabel(product.getCategory());
@@ -936,6 +939,61 @@ public class ProductService {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private Product saveProduct(Product product) {
+        if (mongoAtlasRuntimeStore.isRuntimeEnabled()) {
+            try {
+                return mongoAtlasRuntimeStore.saveProduct(product);
+            } catch (Exception ex) {
+                log.warn("Mongo runtime product save failed, falling back to JPA: {}", ex.getMessage());
+            }
+        }
+        return productRepository.save(product);
+    }
+
+    private Optional<Product> findByNameIgnoreCase(String name) {
+        if (mongoAtlasRuntimeStore.isRuntimeEnabled()) {
+            try {
+                return mongoAtlasRuntimeStore.findProductByNameIgnoreCase(name);
+            } catch (Exception ex) {
+                log.warn("Mongo runtime product name lookup failed, falling back to JPA: {}", ex.getMessage());
+            }
+        }
+        return productRepository.findByNameIgnoreCase(name);
+    }
+
+    private Optional<Product> findFirstByCategoryIgnoreCase(String category) {
+        if (mongoAtlasRuntimeStore.isRuntimeEnabled()) {
+            try {
+                return mongoAtlasRuntimeStore.findFirstProductByCategoryIgnoreCase(category);
+            } catch (Exception ex) {
+                log.warn("Mongo runtime product category lookup failed, falling back to JPA: {}", ex.getMessage());
+            }
+        }
+        return productRepository.findFirstByCategoryIgnoreCase(category);
+    }
+
+    private List<Double> findAllCarbonImpactsOrdered() {
+        if (mongoAtlasRuntimeStore.isRuntimeEnabled()) {
+            try {
+                return mongoAtlasRuntimeStore.findAllProductCarbonImpactsOrdered();
+            } catch (Exception ex) {
+                log.warn("Mongo runtime carbon distribution read failed, falling back to JPA: {}", ex.getMessage());
+            }
+        }
+        return productRepository.findAllCarbonImpactsOrdered();
+    }
+
+    private List<Product> findAllProducts() {
+        if (mongoAtlasRuntimeStore.isRuntimeEnabled()) {
+            try {
+                return mongoAtlasRuntimeStore.findAllProducts();
+            } catch (Exception ex) {
+                log.warn("Mongo runtime product list read failed, falling back to JPA: {}", ex.getMessage());
+            }
+        }
+        return productRepository.findAll();
     }
 
     private double roundTwoDecimals(double value) {
