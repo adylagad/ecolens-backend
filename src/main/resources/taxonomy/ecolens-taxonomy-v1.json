@@ -1,0 +1,173 @@
+{
+  "version": "ecolens-taxonomy-v1",
+  "updatedAt": "2026-02-14",
+  "groups": [
+    {
+      "id": "hydration_drinkware",
+      "label": "Hydration & Drinkware",
+      "classes": [
+        { "id": "reusable_bottle", "label": "Reusable Bottle", "synonyms": ["hydro flask", "steel bottle", "insulated bottle", "water flask"] },
+        { "id": "single_use_plastic_bottle", "label": "Single-use Plastic Bottle", "synonyms": ["plastic water bottle", "pet bottle", "disposable bottle"] },
+        { "id": "glass_bottle", "label": "Glass Bottle", "synonyms": ["juice glass bottle", "soda glass bottle"] },
+        { "id": "aluminum_can", "label": "Aluminum Can", "synonyms": ["soda can", "drink can"] },
+        { "id": "paper_cup", "label": "Paper Cup", "synonyms": ["coffee cup", "takeaway cup", "disposable cup"] },
+        { "id": "reusable_cup_tumbler", "label": "Reusable Cup/Tumbler", "synonyms": ["travel mug", "coffee tumbler", "insulated tumbler"] },
+        { "id": "mug", "label": "Ceramic Mug", "synonyms": ["tea mug", "coffee mug"] },
+        { "id": "lid", "label": "Cup Lid", "synonyms": ["coffee lid", "plastic lid"] },
+        { "id": "straw_plastic", "label": "Plastic Straw", "synonyms": ["disposable straw"] },
+        { "id": "straw_reusable", "label": "Reusable Straw", "synonyms": ["metal straw", "silicone straw"] }
+      ]
+    },
+    {
+      "id": "food_packaging",
+      "label": "Food Packaging & Containers",
+      "classes": [
+        { "id": "takeout_container_plastic", "label": "Takeout Container (Plastic)", "synonyms": ["takeout box", "food takeout container", "plastic food container"] },
+        { "id": "takeout_container_fiber", "label": "Takeout Container (Fiber)", "synonyms": ["bagasse container", "compostable container"] },
+        { "id": "styrofoam_box", "label": "Styrofoam Box", "synonyms": ["foam box", "foam takeout box"] },
+        { "id": "reusable_lunchbox", "label": "Reusable Lunchbox", "synonyms": ["steel lunchbox", "glass lunch box"] },
+        { "id": "plastic_wrap", "label": "Plastic Wrap", "synonyms": ["cling film", "saran wrap"] },
+        { "id": "beeswax_wrap", "label": "Beeswax Wrap", "synonyms": ["reusable food wrap"] },
+        { "id": "zip_bag_single_use", "label": "Single-use Zip Bag", "synonyms": ["plastic zip bag", "food zip bag"] },
+        { "id": "zip_bag_reusable", "label": "Reusable Silicone Bag", "synonyms": ["silicone zip bag", "reusable food bag"] },
+        { "id": "paper_bag", "label": "Paper Bag", "synonyms": ["takeout paper bag"] },
+        { "id": "snack_wrapper", "label": "Snack Wrapper", "synonyms": ["chips packet", "plastic snack packet"] }
+      ]
+    },
+    {
+      "id": "dining_utensils",
+      "label": "Dining & Utensils",
+      "classes": [
+        { "id": "plastic_fork_spoon", "label": "Disposable Plastic Cutlery", "synonyms": ["plastic fork", "plastic spoon", "disposable cutlery"] },
+        { "id": "wooden_cutlery", "label": "Wooden Cutlery", "synonyms": ["wood fork", "wood spoon"] },
+        { "id": "reusable_cutlery", "label": "Reusable Cutlery Set", "synonyms": ["metal cutlery", "travel cutlery"] },
+        { "id": "paper_plate", "label": "Paper Plate", "synonyms": ["disposable plate"] },
+        { "id": "plastic_plate", "label": "Plastic Plate", "synonyms": ["disposable plastic plate"] },
+        { "id": "ceramic_plate", "label": "Ceramic Plate", "synonyms": ["dinner plate"] },
+        { "id": "napkin_paper", "label": "Paper Napkin", "synonyms": ["tissue napkin"] },
+        { "id": "cloth_napkin", "label": "Cloth Napkin", "synonyms": ["reusable napkin"] },
+        { "id": "food_tray_plastic", "label": "Plastic Food Tray", "synonyms": ["plastic tray"] },
+        { "id": "food_tray_metal", "label": "Metal Food Tray", "synonyms": ["steel tray"] }
+      ]
+    },
+    {
+      "id": "shopping_carry",
+      "label": "Shopping & Carry",
+      "classes": [
+        { "id": "plastic_bag", "label": "Plastic Grocery Bag", "synonyms": ["single-use plastic bag", "grocery plastic bag"] },
+        { "id": "paper_shopping_bag", "label": "Paper Shopping Bag", "synonyms": ["retail paper bag"] },
+        { "id": "cloth_tote_bag", "label": "Cloth Tote Bag", "synonyms": ["canvas bag", "cotton tote"] },
+        { "id": "jute_bag", "label": "Jute Bag", "synonyms": ["reusable jute shopping bag"] },
+        { "id": "backpack", "label": "Backpack", "synonyms": ["school backpack", "laptop backpack"] },
+        { "id": "messenger_bag", "label": "Messenger Bag", "synonyms": ["crossbody bag"] },
+        { "id": "garbage_bag", "label": "Garbage Bag", "synonyms": ["trash bag", "bin liner"] },
+        { "id": "laundry_bag", "label": "Laundry Bag", "synonyms": ["cloth laundry bag"] },
+        { "id": "gift_wrap", "label": "Gift Wrap", "synonyms": ["gift paper", "wrapping paper"] },
+        { "id": "gift_bag", "label": "Gift Bag", "synonyms": ["reusable gift bag"] }
+      ]
+    },
+    {
+      "id": "electronics_devices",
+      "label": "Electronics & Devices",
+      "classes": [
+        { "id": "smartphone", "label": "Smartphone", "synonyms": ["mobile phone", "cell phone"] },
+        { "id": "laptop", "label": "Laptop", "synonyms": ["notebook computer", "macbook"] },
+        { "id": "tablet", "label": "Tablet", "synonyms": ["ipad", "android tablet"] },
+        { "id": "smartwatch", "label": "Smartwatch", "synonyms": ["watch wearable"] },
+        { "id": "headphones", "label": "Headphones", "synonyms": ["wired headphones", "wireless headphones"] },
+        { "id": "earbuds", "label": "Earbuds", "synonyms": ["airpods", "wireless earbuds"] },
+        { "id": "camera", "label": "Camera", "synonyms": ["digital camera", "dslr"] },
+        { "id": "gaming_console", "label": "Gaming Console", "synonyms": ["xbox", "playstation", "switch console"] },
+        { "id": "tv_monitor", "label": "TV/Monitor", "synonyms": ["display screen", "computer monitor"] },
+        { "id": "speaker", "label": "Speaker", "synonyms": ["bluetooth speaker"] }
+      ]
+    },
+    {
+      "id": "electronics_power",
+      "label": "Power & Accessories",
+      "classes": [
+        { "id": "phone_charger", "label": "Phone Charger", "synonyms": ["charging adapter", "usb charger"] },
+        { "id": "laptop_charger", "label": "Laptop Charger", "synonyms": ["power brick", "laptop adapter"] },
+        { "id": "charging_cable", "label": "Charging Cable", "synonyms": ["usb cable", "lightning cable", "type c cable"] },
+        { "id": "power_bank", "label": "Power Bank", "synonyms": ["portable battery"] },
+        { "id": "extension_board", "label": "Extension Board", "synonyms": ["power strip"] },
+        { "id": "adapter_dongle", "label": "Adapter/Dongle", "synonyms": ["usb dongle", "connector adapter"] },
+        { "id": "battery_disposable", "label": "Disposable Battery", "synonyms": ["alkaline battery", "aa battery", "aaa battery"] },
+        { "id": "battery_rechargeable", "label": "Rechargeable Battery", "synonyms": ["rechargeable cell"] },
+        { "id": "light_bulb_led", "label": "LED Light Bulb", "synonyms": ["led bulb"] },
+        { "id": "light_bulb_incandescent", "label": "Incandescent Bulb", "synonyms": ["halogen bulb", "old light bulb"] }
+      ]
+    },
+    {
+      "id": "apparel_footwear",
+      "label": "Apparel & Footwear",
+      "classes": [
+        { "id": "tshirt", "label": "T-shirt", "synonyms": ["tee shirt"] },
+        { "id": "shirt", "label": "Shirt", "synonyms": ["button shirt"] },
+        { "id": "jeans", "label": "Jeans", "synonyms": ["denim pants"] },
+        { "id": "pants", "label": "Pants", "synonyms": ["trousers"] },
+        { "id": "hoodie", "label": "Hoodie", "synonyms": ["sweatshirt"] },
+        { "id": "jacket", "label": "Jacket", "synonyms": ["coat"] },
+        { "id": "dress", "label": "Dress", "synonyms": ["gown"] },
+        { "id": "shoes", "label": "Shoes", "synonyms": ["sneakers", "running shoes"] },
+        { "id": "sandals", "label": "Sandals", "synonyms": ["flip flops"] },
+        { "id": "cap_hat", "label": "Cap/Hat", "synonyms": ["baseball cap", "hat"] }
+      ]
+    },
+    {
+      "id": "personal_care",
+      "label": "Personal Care",
+      "classes": [
+        { "id": "toothbrush_plastic", "label": "Plastic Toothbrush", "synonyms": ["manual toothbrush"] },
+        { "id": "toothbrush_bamboo", "label": "Bamboo Toothbrush", "synonyms": ["eco toothbrush"] },
+        { "id": "toothpaste_tube", "label": "Toothpaste Tube", "synonyms": ["toothpaste"] },
+        { "id": "razor_disposable", "label": "Disposable Razor", "synonyms": ["single use razor"] },
+        { "id": "razor_reusable", "label": "Reusable Razor", "synonyms": ["safety razor"] },
+        { "id": "shampoo_bottle", "label": "Shampoo Bottle", "synonyms": ["plastic shampoo bottle"] },
+        { "id": "soap_bar", "label": "Soap Bar", "synonyms": ["bar soap"] },
+        { "id": "deodorant_stick", "label": "Deodorant Stick", "synonyms": ["roll on deodorant"] },
+        { "id": "tissue_box", "label": "Tissue Box", "synonyms": ["facial tissue box"] },
+        { "id": "wet_wipes", "label": "Wet Wipes", "synonyms": ["disposable wipes"] }
+      ]
+    },
+    {
+      "id": "home_cleaning",
+      "label": "Home & Cleaning",
+      "classes": [
+        { "id": "detergent_bottle", "label": "Detergent Bottle", "synonyms": ["laundry detergent", "liquid detergent"] },
+        { "id": "cleaner_spray_bottle", "label": "Cleaner Spray Bottle", "synonyms": ["surface cleaner spray"] },
+        { "id": "refill_pouch", "label": "Refill Pouch", "synonyms": ["cleaning refill pouch"] },
+        { "id": "sponge", "label": "Sponge", "synonyms": ["dish sponge"] },
+        { "id": "scrub_brush", "label": "Scrub Brush", "synonyms": ["cleaning brush"] },
+        { "id": "microfiber_cloth", "label": "Microfiber Cloth", "synonyms": ["cleaning cloth"] },
+        { "id": "paper_towel", "label": "Paper Towel", "synonyms": ["kitchen towel roll"] },
+        { "id": "reusable_towel", "label": "Reusable Kitchen Towel", "synonyms": ["cloth towel"] },
+        { "id": "trash_bin", "label": "Trash Bin", "synonyms": ["waste bin"] },
+        { "id": "recycling_bin", "label": "Recycling Bin", "synonyms": ["recycle bin"] }
+      ]
+    },
+    {
+      "id": "office_school",
+      "label": "Office & School",
+      "classes": [
+        { "id": "notebook", "label": "Notebook", "synonyms": ["writing notebook", "exercise book"] },
+        { "id": "recycled_notebook", "label": "Recycled Notebook", "synonyms": ["recycled paper notebook"] },
+        { "id": "pen_plastic", "label": "Plastic Pen", "synonyms": ["ballpoint pen"] },
+        { "id": "pen_refillable", "label": "Refillable Pen", "synonyms": ["ink refill pen"] },
+        { "id": "pencil", "label": "Pencil", "synonyms": ["wood pencil"] },
+        { "id": "marker", "label": "Marker", "synonyms": ["whiteboard marker"] },
+        { "id": "highlighter", "label": "Highlighter", "synonyms": ["fluorescent marker"] },
+        { "id": "stapler", "label": "Stapler", "synonyms": ["office stapler"] },
+        { "id": "tape_dispenser", "label": "Tape Dispenser", "synonyms": ["scotch tape dispenser"] },
+        { "id": "folder", "label": "Folder", "synonyms": ["document folder", "file folder"] }
+      ]
+    },
+    {
+      "id": "unknown_misc",
+      "label": "Unknown / Misc",
+      "classes": [
+        { "id": "unknown_item", "label": "Unknown Item", "synonyms": ["other", "misc", "unlabeled"] }
+      ]
+    }
+  ]
+}
