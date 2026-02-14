@@ -217,8 +217,8 @@ def main() -> int:
 
     train_t, eval_t = build_transforms()
     train_dataset = datasets.ImageFolder(dataset_dir / "train", transform=train_t)
-    val_dataset = datasets.ImageFolder(dataset_dir / "val", transform=eval_t)
-    test_dataset = datasets.ImageFolder(dataset_dir / "test", transform=eval_t)
+    val_dataset = datasets.ImageFolder(dataset_dir / "val", transform=eval_t, allow_empty=True)
+    test_dataset = datasets.ImageFolder(dataset_dir / "test", transform=eval_t, allow_empty=True)
 
     if len(train_dataset.classes) < 2:
         raise SystemExit("Need at least 2 classes to train a classifier.")

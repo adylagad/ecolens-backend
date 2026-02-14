@@ -8,6 +8,7 @@ import base64
 import json
 import random
 import re
+import shutil
 from collections import defaultdict
 from io import BytesIO
 from pathlib import Path
@@ -77,7 +78,7 @@ def split_counts(total: int, train_ratio: float, val_ratio: float) -> tuple[int,
     if total <= 1:
         return total, 0, 0
     if total == 2:
-        return 1, 1, 0
+        return 1, 0, 1
 
     train_n = int(round(total * train_ratio))
     val_n = int(round(total * val_ratio))
@@ -115,6 +116,8 @@ def main() -> int:
     export_path = Path(args.export_json)
     taxonomy_path = Path(args.taxonomy_json)
     output_dir = Path(args.output_dir)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     export_payload = load_json(export_path)
@@ -128,7 +131,9 @@ def main() -> int:
             continue
         taxonomy_leaf = str(sample.get("taxonomyLeaf") or "").strip()
         final_label = str(sample.get("finalLabel") or "").strip()
-        class_key = taxonomy_leaf or safe_slug(final_label)
+        # Preserve open-ended manual labels: when taxonomy leaf is unresolved, use finalLabel.
+        has_known_taxonomy_leaf = bool(taxonomy_leaf) and taxonomy_leaf not in {"unknown_item", "unknown"}
+        class_key = taxonomy_leaf if has_known_taxonomy_leaf else safe_slug(final_label)
         if not class_key:
             continue
         class_samples[class_key].append(sample)
