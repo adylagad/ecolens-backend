@@ -16,6 +16,9 @@ public class MongoAtlasProperties {
     private boolean runOnStartup = false;
     private boolean migrateProducts = true;
     private boolean migrateHistory = true;
+    private int connectTimeoutMs = 4000;
+    private int socketTimeoutMs = 5000;
+    private int serverSelectionTimeoutMs = 4000;
 
     public String getUri() {
         return uri;
@@ -87,5 +90,29 @@ public class MongoAtlasProperties {
 
     public void setMigrateHistory(boolean migrateHistory) {
         this.migrateHistory = migrateHistory;
+    }
+
+    public int getConnectTimeoutMs() {
+        return connectTimeoutMs;
+    }
+
+    public void setConnectTimeoutMs(int connectTimeoutMs) {
+        this.connectTimeoutMs = connectTimeoutMs;
+    }
+
+    public int getSocketTimeoutMs() {
+        return socketTimeoutMs;
+    }
+
+    public void setSocketTimeoutMs(int socketTimeoutMs) {
+        this.socketTimeoutMs = socketTimeoutMs;
+    }
+
+    public int getServerSelectionTimeoutMs() {
+        return serverSelectionTimeoutMs;
+    }
+
+    public void setServerSelectionTimeoutMs(int serverSelectionTimeoutMs) {
+        this.serverSelectionTimeoutMs = serverSelectionTimeoutMs;
     }
 }

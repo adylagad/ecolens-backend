@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import org.bson.Document;
@@ -27,6 +28,8 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.ConnectionString;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.Sorts;
 
@@ -167,8 +170,21 @@ public class MongoAtlasRuntimeStore {
             throw new IllegalStateException("MongoDB Atlas URI is not configured.");
         }
         String dbName = safeText(mongoAtlasProperties.getDatabase(), "ecolens");
+        int connectTimeoutMs = Math.max(500, mongoAtlasProperties.getConnectTimeoutMs());
+        int socketTimeoutMs = Math.max(500, mongoAtlasProperties.getSocketTimeoutMs());
+        int serverSelectionTimeoutMs = Math.max(500, mongoAtlasProperties.getServerSelectionTimeoutMs());
 
-        try (MongoClient client = MongoClients.create(uri)) {
+        ConnectionString connectionString = new ConnectionString(uri);
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(connectionString)
+                .applyToClusterSettings(builder -> builder.serverSelectionTimeout(serverSelectionTimeoutMs, TimeUnit.MILLISECONDS))
+                .applyToSocketSettings(builder -> {
+                    builder.connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS);
+                    builder.readTimeout(socketTimeoutMs, TimeUnit.MILLISECONDS);
+                })
+                .build();
+
+        try (MongoClient client = MongoClients.create(settings)) {
             MongoDatabase db = client.getDatabase(dbName);
             MongoCollection<Document> collection = db.getCollection(collectionName);
             return function.apply(collection);
