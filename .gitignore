@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# ML training pipeline artifacts
+ml/artifacts/
+ml/data/
+ml/.venv/
+ml/__pycache__/
