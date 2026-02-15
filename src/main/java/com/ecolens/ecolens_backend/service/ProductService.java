@@ -39,6 +39,14 @@ public class ProductService {
             Map.entry("reusable coffee cup", "coffee cup"),
             Map.entry("takeaway container", "food packaging"),
             Map.entry("food container", "food packaging"),
+            Map.entry("blue pen", "pen"),
+            Map.entry("black pen", "pen"),
+            Map.entry("red pen", "pen"),
+            Map.entry("ballpoint pen", "pen"),
+            Map.entry("gel pen", "pen"),
+            Map.entry("fountain pen", "pen"),
+            Map.entry("marker pen", "marker"),
+            Map.entry("highlighter pen", "highlighter"),
             Map.entry("shoes", "footwear"),
             Map.entry("shoe", "footwear"),
             Map.entry("sneaker", "footwear"),
@@ -75,6 +83,8 @@ public class ProductService {
                     "denim", Boolean.TRUE, Boolean.FALSE, 0, "long_life", "Medium", 0.88),
             new MetadataInferenceRule("footwear", List.of("footwear", "shoe", "shoes", "sneaker", "running shoe", "boot", "sandals", "slippers"),
                     "mixed textile and rubber", Boolean.TRUE, Boolean.FALSE, 5, "long_life", "Medium", 0.88),
+            new MetadataInferenceRule("stationery_pen", List.of("pen", "marker", "highlighter", "pencil", "stylus"),
+                    "plastic and ink", Boolean.TRUE, Boolean.FALSE, 0, "long_life", "Medium", 0.9),
             new MetadataInferenceRule("nature_positive_living_item",
                     List.of("tree", "sapling", "seedling", "houseplant", "potted plant", "flower", "shrub", "plant"),
                     "organic", Boolean.FALSE, Boolean.FALSE, 0, "living_natural", "Organic", 0.96)
@@ -136,6 +146,16 @@ public class ProductService {
 
         ProductMatchResult productMatchResult = findBestProduct(normalizedLabel);
         Product product = productMatchResult.product().orElseGet(() -> createDefaultProduct(normalizedLabel));
+        if (!normalizedLabel.isBlank()) {
+            String productNameNormalized = normalizeLabel(product.getName());
+            if (isMissingText(productNameNormalized) || "unknown product".equals(productNameNormalized)) {
+                product.setName(toDisplayLabel(normalizedLabel));
+            }
+            String productCategoryNormalized = normalizeLabel(product.getCategory());
+            if (isMissingText(productCategoryNormalized) || "unknown".equals(productCategoryNormalized)) {
+                product.setCategory(normalizedLabel);
+            }
+        }
 
         MetadataResolution metadataResolution = resolveMetadata(product, normalizedLabel);
         boolean autoLearned = false;
@@ -225,6 +245,7 @@ public class ProductService {
 
     private Product createDefaultProduct(String detectedLabel) {
         String fallbackName = detectedLabel.isBlank() ? "Unknown Product" : toDisplayLabel(detectedLabel);
+        String fallbackCategory = detectedLabel.isBlank() ? "unknown" : detectedLabel;
         boolean naturePositiveLabel = isNaturePositiveLabel(detectedLabel);
         int fallbackEcoScore = naturePositiveLabel
                 ? clamp(
@@ -246,7 +267,7 @@ public class ProductService {
         String fallbackLifecycle = naturePositiveLabel ? "living_natural" : "";
         return new Product(
                 fallbackName,
-                "unknown",
+                fallbackCategory,
                 fallbackEcoScore,
                 fallbackCo2,
                 fallbackRecyclability,

@@ -41,6 +41,10 @@ public class LLMService {
             "none",
             "not sure"
     );
+    private static final Set<String> COLOR_PREFIXES = Set.of(
+            "black", "white", "blue", "red", "green", "yellow", "orange",
+            "purple", "pink", "brown", "gray", "grey", "silver", "gold"
+    );
     private static final Logger log = LoggerFactory.getLogger(LLMService.class);
 
     private final Environment environment;
@@ -408,6 +412,18 @@ public class LLMService {
         }
 
         String[] parts = value.isBlank() ? new String[0] : value.split("\\s+");
+        if (parts.length >= 2 && COLOR_PREFIXES.contains(parts[0])) {
+            StringBuilder withoutColor = new StringBuilder();
+            for (int i = 1; i < parts.length; i++) {
+                if (withoutColor.length() > 0) {
+                    withoutColor.append(' ');
+                }
+                withoutColor.append(parts[i]);
+            }
+            value = withoutColor.toString();
+            parts = value.isBlank() ? new String[0] : value.split("\\s+");
+        }
+
         if (parts.length > 4) {
             StringBuilder compact = new StringBuilder();
             for (int i = 0; i < 4; i++) {
