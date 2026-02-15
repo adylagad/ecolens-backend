@@ -71,6 +71,35 @@ python ml/train_and_export.py \
   --export-pte
 ```
 
+## Public dataset training (no in-app scanning required)
+
+You can bootstrap a stronger on-device model from **public COCO 2017 data**:
+
+1. Build a taxonomy-mapped dataset from COCO:
+
+```bash
+python ml/build_public_coco_dataset.py \
+  --output-dir ml/artifacts/public_dataset \
+  --max-images-per-class 300 \
+  --min-images-per-class 80
+```
+
+2. Train + export model artifacts from this public dataset:
+
+```bash
+python ml/train_and_export.py \
+  --dataset-dir ml/artifacts/public_dataset \
+  --output-dir ml/artifacts/model_public \
+  --epochs 12 \
+  --batch-size 32 \
+  --num-workers 0 \
+  --learning-rate 0.001 \
+  --export-pte
+```
+
+This path uses mapped COCO classes (for example: backpack, smartphone, laptop, bottle, cup)
+to generate a reusable baseline without collecting scans first.
+
 ## ExecuTorch `.pte` export notes
 
 - `model.torchscript.pt` and `labels.json` are always generated.

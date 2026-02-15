@@ -59,6 +59,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=2,
+        help="DataLoader workers. Set 0 in restricted environments.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--device",
@@ -225,9 +231,28 @@ def main() -> int:
     if len(train_dataset) == 0:
         raise SystemExit("No training images found in dataset/train.")
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=False)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=False)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=False)
+    num_workers = max(0, int(args.num_workers))
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=False,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=False,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=False,
+    )
 
     model = make_model(num_classes=len(train_dataset.classes)).to(device)
     criterion = nn.CrossEntropyLoss()
@@ -330,6 +355,7 @@ def main() -> int:
             {
                 "epochs": args.epochs,
                 "batchSize": args.batch_size,
+                "numWorkers": num_workers,
                 "learningRate": args.learning_rate,
                 "classCount": len(train_dataset.classes),
                 "trainImageCount": len(train_dataset),
