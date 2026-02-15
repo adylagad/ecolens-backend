@@ -213,13 +213,14 @@ public class LLMService {
     private List<String> buildVisionModelCandidates() {
         LinkedHashSet<String> models = new LinkedHashSet<>();
         String configured = resolveVisionModel();
+        // Prefer lighter vision models first to avoid free-tier quota exhaustion.
+        models.add("gemini-2.5-flash-lite");
         if (configured != null && !configured.isBlank()) {
             models.add(configured.trim());
         }
-        models.add("gemini-2.5-flash-lite");
-        models.add("gemini-2.5-flash");
         models.add("gemini-flash-latest");
         models.add("gemini-2.0-flash");
+        models.add("gemini-2.5-flash");
         return new ArrayList<>(models);
     }
 
@@ -239,6 +240,9 @@ public class LLMService {
                 String trimmedBody = body.length() > 500 ? body.substring(0, 500) : body;
                 log.warn("Gemini image detection failed: model={} endpoint={} mimeType={} status={} body={}",
                         model, endpoint, mimeType, response.statusCode(), trimmedBody);
+                if (!shouldTryAlternateEndpoint(response.statusCode())) {
+                    break;
+                }
                 continue;
             }
 
@@ -255,6 +259,11 @@ public class LLMService {
             return label;
         }
         return "";
+    }
+
+    private boolean shouldTryAlternateEndpoint(int statusCode) {
+        // Only retry the alternate API version for model-not-found style errors.
+        return statusCode == 404 || statusCode == 400;
     }
 
     private boolean isGeminiProviderEnabled() {
