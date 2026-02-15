@@ -104,17 +104,28 @@ public class ProductService {
         log.info("Model routing for recognition request: textModel={}, visionModel={}",
                 llmService.getConfiguredTextModel(), llmService.getConfiguredVisionModel());
 
-        String labelForLookup = canonicalizeLabel(normalizeLabel(detectedLabel));
+        String providedLabel = canonicalizeLabel(normalizeLabel(detectedLabel));
+        String labelForLookup = providedLabel;
         boolean hasImage = imageBase64 != null && !imageBase64.isBlank();
         String inputSource;
-        if (!labelForLookup.isBlank()) {
+        if (hasImage) {
+            inputSource = "image";
+            log.info("Recognition input source=image autoDetectRequested=true labelHint='{}'", providedLabel);
+            String detectedFromImage = canonicalizeLabel(normalizeLabel(llmService.detectLabelFromImage(imageBase64)));
+            if (!detectedFromImage.isBlank()) {
+                labelForLookup = detectedFromImage;
+                log.info("Gemini image detected label='{}'", labelForLookup);
+            } else if (!providedLabel.isBlank()) {
+                labelForLookup = providedLabel;
+                inputSource = "image_with_label_hint";
+                log.info("Gemini image label empty. Falling back to provided label hint='{}'", labelForLookup);
+            } else {
+                labelForLookup = "";
+                log.warn("Gemini image label empty and no provided label hint.");
+            }
+        } else if (!providedLabel.isBlank()) {
             inputSource = "text";
             log.info("Recognition input source=text providedLabel='{}'", labelForLookup);
-        } else if (hasImage) {
-            inputSource = "image";
-            log.info("Recognition input source=image autoDetectRequested=true");
-            labelForLookup = canonicalizeLabel(normalizeLabel(llmService.detectLabelFromImage(imageBase64)));
-            log.info("Gemini image detected label='{}'", labelForLookup);
         } else {
             inputSource = "none";
             log.warn("Recognition input source=none: no text label and no image payload.");
@@ -795,7 +806,7 @@ public class ProductService {
         }
 
         double blended = (normalizedRequest * 0.35) + (strategyConfidence * 0.65);
-        if ("image".equals(inputSource) && (normalizedLabel == null || normalizedLabel.isBlank())) {
+        if (inputSource != null && inputSource.startsWith("image") && (normalizedLabel == null || normalizedLabel.isBlank())) {
             blended = Math.min(blended, 0.3);
         }
         if ("none".equals(inputSource)) {
