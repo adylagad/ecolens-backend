@@ -7,7 +7,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +29,17 @@ public class LLMService {
 
     private static final String FALLBACK_MESSAGE = "Explanation not available (no API key / generation failed).";
     private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final Pattern VISION_LABEL_PREFIX = Pattern.compile("^(label|item|object|main object)\\s*[:\\-]\\s*", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> INVALID_VISION_LABELS = Set.of(
+            "unknown",
+            "unknown item",
+            "unknown product",
+            "unidentified",
+            "n a",
+            "na",
+            "none",
+            "not sure"
+    );
     private static final Logger log = LoggerFactory.getLogger(LLMService.class);
 
     private final Environment environment;
@@ -96,41 +113,30 @@ public class LLMService {
             return "";
         }
 
-        try {
-            String model = resolveVisionModel();
-            log.info("Gemini image detection started: visionModel={}", model);
-            String sanitizedImage = sanitizeImageBase64(imageBase64);
-            if (sanitizedImage.isBlank()) {
-                return "";
-            }
-
-            String mimeType = detectMimeType(sanitizedImage);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(buildGeminiUri(model, apiKeyResolution.key()))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(buildGeminiVisionRequestBody(sanitizedImage, mimeType)))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("Gemini image detection failed: model={} HTTP {} body={}",
-                        model, response.statusCode(), response.body());
-                return "";
-            }
-
-            String content = extractGeneratedText(response.body());
-            if (content == null || content.isBlank()) {
-                return "";
-            }
-            String label = content.trim().toLowerCase();
-            log.info("Gemini image detection succeeded: model={}, mimeType={}, label='{}'",
-                    model, mimeType, label);
-            return label;
-        } catch (Exception ex) {
-            log.warn("Gemini image detection failed: {}: {}", ex.getClass().getSimpleName(), ex.getMessage());
+        String sanitizedImage = sanitizeImageBase64(imageBase64);
+        if (sanitizedImage.isBlank()) {
+            log.warn("Gemini image detection skipped: invalid base64 image payload.");
             return "";
         }
+
+        String mimeType = detectMimeType(sanitizedImage);
+        List<String> visionModelCandidates = buildVisionModelCandidates();
+        log.info("Gemini image detection started: mimeType={}, modelCandidates={}", mimeType, visionModelCandidates);
+
+        for (String model : visionModelCandidates) {
+            try {
+                String label = detectLabelFromImageWithModel(model, apiKeyResolution.key(), sanitizedImage, mimeType);
+                if (!label.isBlank()) {
+                    return label;
+                }
+            } catch (Exception ex) {
+                log.warn("Gemini image detection attempt failed: model={} error={} message={}",
+                        model, ex.getClass().getSimpleName(), ex.getMessage());
+            }
+        }
+
+        log.warn("Gemini image detection exhausted all model candidates without a usable label.");
+        return "";
     }
 
     public String getConfiguredTextModel() {
@@ -201,6 +207,47 @@ public class LLMService {
         return "gemini-2.5-flash-lite";
     }
 
+    private List<String> buildVisionModelCandidates() {
+        LinkedHashSet<String> models = new LinkedHashSet<>();
+        String configured = resolveVisionModel();
+        if (configured != null && !configured.isBlank()) {
+            models.add(configured.trim());
+        }
+        models.add("gemini-2.5-flash");
+        models.add("gemini-2.0-flash");
+        models.add("gemini-1.5-flash");
+        return new ArrayList<>(models);
+    }
+
+    private String detectLabelFromImageWithModel(String model, String apiKey, String imageBase64, String mimeType) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(buildGeminiUri(model, apiKey))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(buildGeminiVisionRequestBody(imageBase64, mimeType)))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String body = response.body() == null ? "" : response.body();
+            String trimmedBody = body.length() > 500 ? body.substring(0, 500) : body;
+            log.warn("Gemini image detection failed: model={} mimeType={} status={} body={}",
+                    model, mimeType, response.statusCode(), trimmedBody);
+            return "";
+        }
+
+        String content = extractGeneratedText(response.body());
+        String label = normalizeVisionLabel(content);
+        if (label.isBlank()) {
+            log.warn("Gemini image detection returned empty label after normalization: model={} mimeType={} raw='{}'",
+                    model, mimeType, safe(content));
+            return "";
+        }
+
+        log.info("Gemini image detection succeeded: model={}, mimeType={}, label='{}'",
+                model, mimeType, label);
+        return label;
+    }
+
     private boolean isGeminiProviderEnabled() {
         String provider = environment.getProperty("llm.provider");
         if (provider == null || provider.isBlank()) {
@@ -232,9 +279,11 @@ public class LLMService {
     }
 
     private String buildGeminiVisionRequestBody(String imageBase64, String mimeType) throws IOException {
-        String prompt = "Identify the main product item in this image and return only a short lower-case "
-                + "category label such as plastic bottle, paper cup, or aluminum can. "
-                + "Return label only.";
+        String prompt = "You are labeling one object from a camera image for an eco-scanner app.\n"
+                + "Identify the single main everyday object.\n"
+                + "Return JSON only in this exact format: {\"label\":\"<1-4 word lowercase label>\"}.\n"
+                + "Examples: {\"label\":\"running shoe\"}, {\"label\":\"paper coffee cup\"}, {\"label\":\"laptop charger\"}.\n"
+                + "If uncertain, still return your best guess in the same JSON format.";
 
         JsonNode payload = objectMapper.createObjectNode()
                 .set("contents", objectMapper.createArrayNode().add(
@@ -274,6 +323,80 @@ public class LLMService {
             }
         }
         return text.toString().trim();
+    }
+
+    private String normalizeVisionLabel(String rawContent) {
+        if (rawContent == null || rawContent.isBlank()) {
+            return "";
+        }
+
+        String value = rawContent.trim();
+        String stripped = value
+                .replace("```json", "")
+                .replace("```JSON", "")
+                .replace("```", "")
+                .trim();
+        if (!stripped.isBlank()) {
+            value = stripped;
+        }
+
+        if (value.startsWith("{") && value.endsWith("}")) {
+            try {
+                JsonNode json = objectMapper.readTree(value);
+                String fromLabel = json.path("label").asText("").trim();
+                if (!fromLabel.isBlank()) {
+                    value = fromLabel;
+                } else {
+                    String fromName = json.path("name").asText("").trim();
+                    String fromItem = json.path("item").asText("").trim();
+                    value = !fromName.isBlank() ? fromName : fromItem;
+                }
+            } catch (IOException ignored) {
+                // Fallback to plain-text normalization below.
+            }
+        }
+
+        int newlineIndex = value.indexOf('\n');
+        if (newlineIndex >= 0) {
+            value = value.substring(0, newlineIndex).trim();
+        }
+
+        value = value.replace("`", "");
+        value = VISION_LABEL_PREFIX.matcher(value).replaceFirst("");
+        value = value.replaceAll("^\"+|\"+$", "");
+        value = value.replaceAll("^'+|'+$", "");
+        value = value.toLowerCase(Locale.ROOT);
+        value = value.replaceAll("[^a-z0-9\\s\\-/]", " ");
+        value = value.replaceAll("\\s+", " ").trim();
+
+        if (value.startsWith("a ")) {
+            value = value.substring(2).trim();
+        } else if (value.startsWith("an ")) {
+            value = value.substring(3).trim();
+        } else if (value.startsWith("the ")) {
+            value = value.substring(4).trim();
+        }
+
+        if (value.length() > 64) {
+            value = value.substring(0, 64).trim();
+        }
+
+        String[] parts = value.isBlank() ? new String[0] : value.split("\\s+");
+        if (parts.length > 4) {
+            StringBuilder compact = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                if (i > 0) {
+                    compact.append(' ');
+                }
+                compact.append(parts[i]);
+            }
+            value = compact.toString();
+        }
+
+        if (INVALID_VISION_LABELS.contains(value)) {
+            return "";
+        }
+        return value;
     }
 
     private String buildPrompt(Product product) {
@@ -331,6 +454,32 @@ public class LLMService {
                 && (decoded[1] & 0xFF) == 0xD8
                 && (decoded[2] & 0xFF) == 0xFF) {
             return "image/jpeg";
+        }
+
+        if (decoded.length >= 12
+                && decoded[0] == 'R'
+                && decoded[1] == 'I'
+                && decoded[2] == 'F'
+                && decoded[3] == 'F'
+                && decoded[8] == 'W'
+                && decoded[9] == 'E'
+                && decoded[10] == 'B'
+                && decoded[11] == 'P') {
+            return "image/webp";
+        }
+
+        if (decoded.length >= 12
+                && decoded[4] == 'f'
+                && decoded[5] == 't'
+                && decoded[6] == 'y'
+                && decoded[7] == 'p') {
+            String brand = new String(decoded, 8, 4, StandardCharsets.US_ASCII).toLowerCase(Locale.ROOT);
+            if (brand.startsWith("hei") || "hevc".equals(brand) || "hevx".equals(brand)) {
+                return "image/heic";
+            }
+            if ("heif".equals(brand) || "mif1".equals(brand) || "msf1".equals(brand)) {
+                return "image/heif";
+            }
         }
 
         return "image/jpeg";

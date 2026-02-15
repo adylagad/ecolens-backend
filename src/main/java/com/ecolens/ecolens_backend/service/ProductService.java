@@ -38,7 +38,17 @@ public class ProductService {
             Map.entry("coffee mug", "coffee cup"),
             Map.entry("reusable coffee cup", "coffee cup"),
             Map.entry("takeaway container", "food packaging"),
-            Map.entry("food container", "food packaging")
+            Map.entry("food container", "food packaging"),
+            Map.entry("shoes", "footwear"),
+            Map.entry("shoe", "footwear"),
+            Map.entry("sneaker", "footwear"),
+            Map.entry("sneakers", "footwear"),
+            Map.entry("running shoe", "footwear"),
+            Map.entry("running shoes", "footwear"),
+            Map.entry("boots", "footwear"),
+            Map.entry("boot", "footwear"),
+            Map.entry("sandals", "footwear"),
+            Map.entry("slippers", "footwear")
     );
     private static final List<MetadataInferenceRule> METADATA_INFERENCE_RULES = List.of(
             new MetadataInferenceRule("plastic_bottle", List.of("plastic bottle", "water bottle"),
@@ -63,6 +73,8 @@ public class ProductService {
                     "polyester", Boolean.FALSE, Boolean.FALSE, 0, "fast_fashion", "Low", 0.8),
             new MetadataInferenceRule("slow_fashion", List.of("second hand", "denim jacket"),
                     "denim", Boolean.TRUE, Boolean.FALSE, 0, "long_life", "Medium", 0.88),
+            new MetadataInferenceRule("footwear", List.of("footwear", "shoe", "shoes", "sneaker", "running shoe", "boot", "sandals", "slippers"),
+                    "mixed textile and rubber", Boolean.TRUE, Boolean.FALSE, 5, "long_life", "Medium", 0.88),
             new MetadataInferenceRule("nature_positive_living_item",
                     List.of("tree", "sapling", "seedling", "houseplant", "potted plant", "flower", "shrub", "plant"),
                     "organic", Boolean.FALSE, Boolean.FALSE, 0, "living_natural", "Organic", 0.96)
