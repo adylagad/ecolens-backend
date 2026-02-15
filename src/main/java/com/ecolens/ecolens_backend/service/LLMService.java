@@ -2,7 +2,6 @@ package com.ecolens.ecolens_backend.service;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -28,7 +27,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class LLMService {
 
     private static final String FALLBACK_MESSAGE = "Explanation not available (no API key / generation failed).";
-    private static final String GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final String GEMINI_API_KEY_HEADER = "x-goog-api-key";
+    private static final String GEMINI_BASE_URL_V1BETA = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final String GEMINI_BASE_URL_V1 = "https://generativelanguage.googleapis.com/v1/models/";
     private static final Pattern VISION_LABEL_PREFIX = Pattern.compile("^(label|item|object|main object)\\s*[:\\-]\\s*", Pattern.CASE_INSENSITIVE);
     private static final Set<String> INVALID_VISION_LABELS = Set.of(
             "unknown",
@@ -70,7 +71,8 @@ public class LLMService {
                     apiKeyResolution.source(), model);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(buildGeminiUri(model, apiKeyResolution.key()))
+                    .uri(buildGeminiUri(model, GEMINI_BASE_URL_V1BETA))
+                    .header(GEMINI_API_KEY_HEADER, apiKeyResolution.key())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(buildGeminiRequestBody(product)))
                     .build();
@@ -121,7 +123,8 @@ public class LLMService {
 
         String mimeType = detectMimeType(sanitizedImage);
         List<String> visionModelCandidates = buildVisionModelCandidates();
-        log.info("Gemini image detection started: mimeType={}, modelCandidates={}", mimeType, visionModelCandidates);
+        log.info("Gemini image detection started: keySource={}, mimeType={}, modelCandidates={}",
+                apiKeyResolution.source(), mimeType, visionModelCandidates);
 
         for (String model : visionModelCandidates) {
             try {
@@ -213,39 +216,45 @@ public class LLMService {
         if (configured != null && !configured.isBlank()) {
             models.add(configured.trim());
         }
+        models.add("gemini-2.5-flash-lite");
         models.add("gemini-2.5-flash");
+        models.add("gemini-flash-latest");
         models.add("gemini-2.0-flash");
-        models.add("gemini-1.5-flash");
         return new ArrayList<>(models);
     }
 
     private String detectLabelFromImageWithModel(String model, String apiKey, String imageBase64, String mimeType) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(buildGeminiUri(model, apiKey))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(buildGeminiVisionRequestBody(imageBase64, mimeType)))
-                .build();
+        List<URI> endpointCandidates = buildGeminiModelEndpointCandidates(model);
+        for (URI endpoint : endpointCandidates) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(endpoint)
+                    .header(GEMINI_API_KEY_HEADER, apiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(buildGeminiVisionRequestBody(imageBase64, mimeType)))
+                    .build();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String body = response.body() == null ? "" : response.body();
-            String trimmedBody = body.length() > 500 ? body.substring(0, 500) : body;
-            log.warn("Gemini image detection failed: model={} mimeType={} status={} body={}",
-                    model, mimeType, response.statusCode(), trimmedBody);
-            return "";
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                String body = response.body() == null ? "" : response.body();
+                String trimmedBody = body.length() > 500 ? body.substring(0, 500) : body;
+                log.warn("Gemini image detection failed: model={} endpoint={} mimeType={} status={} body={}",
+                        model, endpoint, mimeType, response.statusCode(), trimmedBody);
+                continue;
+            }
+
+            String content = extractGeneratedText(response.body());
+            String label = normalizeVisionLabel(content);
+            if (label.isBlank()) {
+                log.warn("Gemini image detection returned empty label after normalization: model={} endpoint={} mimeType={} raw='{}'",
+                        model, endpoint, mimeType, safe(content));
+                continue;
+            }
+
+            log.info("Gemini image detection succeeded: model={}, endpoint={}, mimeType={}, label='{}'",
+                    model, endpoint, mimeType, label);
+            return label;
         }
-
-        String content = extractGeneratedText(response.body());
-        String label = normalizeVisionLabel(content);
-        if (label.isBlank()) {
-            log.warn("Gemini image detection returned empty label after normalization: model={} mimeType={} raw='{}'",
-                    model, mimeType, safe(content));
-            return "";
-        }
-
-        log.info("Gemini image detection succeeded: model={}, mimeType={}, label='{}'",
-                model, mimeType, label);
-        return label;
+        return "";
     }
 
     private boolean isGeminiProviderEnabled() {
@@ -256,11 +265,19 @@ public class LLMService {
         return "gemini".equalsIgnoreCase(provider.trim());
     }
 
-    private URI buildGeminiUri(String model, String apiKey) {
-        String encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8);
-        String encodedKey = URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
-        String endpoint = GEMINI_BASE_URL + encodedModel + ":generateContent?key=" + encodedKey;
-        return URI.create(endpoint);
+    private List<URI> buildGeminiModelEndpointCandidates(String model) {
+        List<URI> endpoints = new ArrayList<>(2);
+        endpoints.add(buildGeminiUri(model, GEMINI_BASE_URL_V1BETA));
+        endpoints.add(buildGeminiUri(model, GEMINI_BASE_URL_V1));
+        return endpoints;
+    }
+
+    private URI buildGeminiUri(String model, String baseUrl) {
+        String safeModel = model == null ? "" : model.trim();
+        if (safeModel.startsWith("models/")) {
+            safeModel = safeModel.substring("models/".length());
+        }
+        return URI.create(baseUrl + safeModel + ":generateContent");
     }
 
     private String buildGeminiRequestBody(Product product) throws IOException {
