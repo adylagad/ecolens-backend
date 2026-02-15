@@ -174,7 +174,13 @@ public class ProductService {
             explanation = ratingDecision.summary();
         }
         response.setExplanation(explanation);
-        double adjustedConfidence = applyMetadataConfidencePenalty(confidence, metadataResolution);
+        double adjustedConfidence = deriveConfidence(
+                confidence,
+                inputSource,
+                normalizedLabel,
+                productMatchResult,
+                metadataResolution
+        );
         response.setConfidence(roundThreeDecimals(adjustedConfidence));
 
         if (metadataResolution.inferred()) {
@@ -750,6 +756,40 @@ public class ProductService {
                 ? DEFAULT_METADATA_INFERENCE_CONFIDENCE_MULTIPLIER
                 : metadataResolution.confidenceMultiplier();
         return clampDouble(normalizedConfidence * multiplier * fieldPenalty, 0.0, 1.0);
+    }
+
+    private double deriveConfidence(
+            double requestConfidence,
+            String inputSource,
+            String normalizedLabel,
+            ProductMatchResult productMatchResult,
+            MetadataResolution metadataResolution
+    ) {
+        double normalizedRequest = clampDouble(requestConfidence, 0.0, 1.0);
+        double strategyConfidence;
+        switch (productMatchResult.strategy()) {
+            case "exact":
+                strategyConfidence = 0.96;
+                break;
+            case "fuzzy":
+                strategyConfidence = clampDouble(Math.max(0.4, productMatchResult.score()), 0.0, 1.0);
+                break;
+            case "auto_learned":
+                strategyConfidence = 0.55;
+                break;
+            default:
+                strategyConfidence = 0.28;
+                break;
+        }
+
+        double blended = (normalizedRequest * 0.35) + (strategyConfidence * 0.65);
+        if ("image".equals(inputSource) && (normalizedLabel == null || normalizedLabel.isBlank())) {
+            blended = Math.min(blended, 0.3);
+        }
+        if ("none".equals(inputSource)) {
+            blended = Math.min(blended, 0.25);
+        }
+        return applyMetadataConfidencePenalty(blended, metadataResolution);
     }
 
     private double computeCatalogCoverage(ProductMatchResult productMatchResult, MetadataResolution metadataResolution) {
