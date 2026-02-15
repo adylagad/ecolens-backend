@@ -7,6 +7,10 @@ public class HistoryStatsResponse {
     private Integer greenerCount;
     private Integer highImpactThreshold;
     private Integer greenerThreshold;
+    private String weekKey;
+    private Integer avoidedSingleUseCount;
+    private Integer currentStreak;
+    private Integer bestStreak;
 
     public HistoryStatsResponse() {
     }
@@ -49,5 +53,37 @@ public class HistoryStatsResponse {
 
     public void setGreenerThreshold(Integer greenerThreshold) {
         this.greenerThreshold = greenerThreshold;
+    }
+
+    public String getWeekKey() {
+        return weekKey;
+    }
+
+    public void setWeekKey(String weekKey) {
+        this.weekKey = weekKey;
+    }
+
+    public Integer getAvoidedSingleUseCount() {
+        return avoidedSingleUseCount;
+    }
+
+    public void setAvoidedSingleUseCount(Integer avoidedSingleUseCount) {
+        this.avoidedSingleUseCount = avoidedSingleUseCount;
+    }
+
+    public Integer getCurrentStreak() {
+        return currentStreak;
+    }
+
+    public void setCurrentStreak(Integer currentStreak) {
+        this.currentStreak = currentStreak;
+    }
+
+    public Integer getBestStreak() {
+        return bestStreak;
+    }
+
+    public void setBestStreak(Integer bestStreak) {
+        this.bestStreak = bestStreak;
     }
 }

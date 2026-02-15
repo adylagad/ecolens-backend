@@ -6,7 +6,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,6 +45,15 @@ public class HistoryController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(historyService.list(highImpactOnly, resolveAuthenticatedUserId(jwt)));
+    }
+
+    @DeleteMapping("/{historyId}")
+    public ResponseEntity<Void> delete(
+            @PathVariable("historyId") String historyId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        historyService.delete(historyId, resolveAuthenticatedUserId(jwt));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/stats")

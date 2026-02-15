@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import org.bson.Document;
+import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -156,6 +157,35 @@ public class MongoAtlasRuntimeStore {
         });
     }
 
+    public boolean deleteHistoryEntryByUserAndId(String userId, String historyId) {
+        String normalizedUserId = safeText(userId, "");
+        String normalizedHistoryId = safeText(historyId, "");
+        if (normalizedUserId.isBlank() || normalizedHistoryId.isBlank()) {
+            return false;
+        }
+        return withHistoryCollection(history -> {
+            long deletedCount = 0;
+            if (normalizedHistoryId.chars().allMatch(Character::isDigit)) {
+                try {
+                    long legacyId = Long.parseLong(normalizedHistoryId);
+                    deletedCount = history.deleteOne(and(eq("userId", normalizedUserId), eq("legacyId", legacyId)))
+                            .getDeletedCount();
+                } catch (NumberFormatException ignored) {
+                    deletedCount = 0;
+                }
+            }
+            if (deletedCount > 0) {
+                return true;
+            }
+            if (ObjectId.isValid(normalizedHistoryId)) {
+                deletedCount = history
+                        .deleteOne(and(eq("userId", normalizedUserId), eq("_id", new ObjectId(normalizedHistoryId))))
+                        .getDeletedCount();
+            }
+            return deletedCount > 0;
+        });
+    }
+
     private <T> T withProductsCollection(MongoCollectionFunction<T> function) {
         return withCollection(safeText(mongoAtlasProperties.getProductsCollection(), "products"), function);
     }
@@ -284,6 +314,13 @@ public class MongoAtlasRuntimeStore {
             } catch (Exception ignored) {
                 // Non-fatal: id is optional for responses.
             }
+        }
+
+        Object rawId = doc.get("_id");
+        if (rawId instanceof ObjectId objectId) {
+            entry.setRuntimeId(objectId.toHexString());
+        } else if (rawId != null) {
+            entry.setRuntimeId(String.valueOf(rawId));
         }
 
         return entry;

@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "scan_history")
@@ -34,6 +35,9 @@ public class ScanHistoryEntry {
 
     @Column(name = "scanned_at", nullable = false)
     private LocalDateTime scannedAt;
+
+    @Transient
+    private String runtimeId;
 
     public ScanHistoryEntry() {
     }
@@ -104,5 +108,13 @@ public class ScanHistoryEntry {
 
     public void setScannedAt(LocalDateTime scannedAt) {
         this.scannedAt = scannedAt;
+    }
+
+    public String getRuntimeId() {
+        return runtimeId;
+    }
+
+    public void setRuntimeId(String runtimeId) {
+        this.runtimeId = runtimeId;
     }
 }
