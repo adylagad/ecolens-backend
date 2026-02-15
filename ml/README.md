@@ -126,6 +126,37 @@ cd /Users/aditya/repos/hacks/ecolens-mobile
 npx expo run:ios --device
 ```
 
+## Phase 2: Hybrid training (ImageNet + COCO/TACO fine-tune)
+
+This is the recommended path for stronger EcoLens on-device accuracy:
+
+1. Export broad ImageNet baseline (1000 classes) for coverage.
+2. Build hybrid taxonomy dataset from COCO + TACO.
+3. Fine-tune MobileNetV3 on the hybrid taxonomy dataset and export `.pte`.
+
+Run in one command:
+
+```bash
+python ml/run_hybrid_pipeline.py \
+  --artifacts-root ml/artifacts \
+  --include-taco \
+  --max-coco-images-per-class 260 \
+  --max-taco-images-per-class 160 \
+  --min-images-per-class 80 \
+  --epochs 12 \
+  --batch-size 32 \
+  --num-workers 0 \
+  --export-pte
+```
+
+Outputs:
+
+- Broad baseline: `ml/artifacts/model_imagenet/model.pte` + `labels.json`
+- Hybrid fine-tuned model: `ml/artifacts/model_hybrid/model.pte` + `labels.json`
+- Hybrid dataset: `ml/artifacts/hybrid_dataset`
+
+Use the hybrid model as primary in iOS, and optionally keep ImageNet as the second-pass coverage model.
+
 ## ExecuTorch `.pte` export notes
 
 - `model.torchscript.pt` and `labels.json` are always generated.
