@@ -345,12 +345,19 @@ public class ProductService {
         String learnedMaterial = inferredMaterial
                 ? metadataResolution.material()
                 : naturePositiveLabel ? "organic" : "";
-        Boolean learnedReusable = inferredReusable
-                ? metadataResolution.reusable()
-                : naturePositiveLabel ? Boolean.FALSE : null;
-        Boolean learnedSingleUse = inferredSingleUse
-                ? metadataResolution.singleUse()
-                : naturePositiveLabel ? Boolean.FALSE : null;
+        Boolean learnedReusable = null;
+        if (inferredReusable) {
+            learnedReusable = metadataResolution.reusable();
+        } else if (naturePositiveLabel) {
+            learnedReusable = Boolean.FALSE;
+        }
+
+        Boolean learnedSingleUse = null;
+        if (inferredSingleUse) {
+            learnedSingleUse = metadataResolution.singleUse();
+        } else if (naturePositiveLabel) {
+            learnedSingleUse = Boolean.FALSE;
+        }
         Integer learnedRecycledContent = inferredRecycledContent
                 ? metadataResolution.recycledContentPercent()
                 : 0;
