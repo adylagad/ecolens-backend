@@ -100,6 +100,32 @@ python ml/train_and_export.py \
 This path uses mapped COCO classes (for example: backpack, smartphone, laptop, bottle, cup)
 to generate a reusable baseline without collecting scans first.
 
+## Broad coverage baseline (ImageNet)
+
+For significantly wider everyday-object coverage (pen/page/book/cup/bottle/phone/laptop, etc.),
+export a pretrained ImageNet MobileNet baseline:
+
+```bash
+python ml/export_imagenet_baseline.py \
+  --output-dir ml/artifacts/model_imagenet \
+  --model-name mobilenet_v3_small \
+  --require-pte
+```
+
+Then copy artifacts to iOS bundle paths used by ExecuTorch:
+
+```bash
+cp ml/artifacts/model_imagenet/model.pte /Users/aditya/repos/hacks/ecolens-mobile/ios/ecolensmobile/model.pte
+cp ml/artifacts/model_imagenet/labels.json /Users/aditya/repos/hacks/ecolens-mobile/ios/ecolensmobile/labels.json
+```
+
+Rebuild and reinstall the iOS app (hot reload is not enough for native model files):
+
+```bash
+cd /Users/aditya/repos/hacks/ecolens-mobile
+npx expo run:ios --device
+```
+
 ## ExecuTorch `.pte` export notes
 
 - `model.torchscript.pt` and `labels.json` are always generated.
